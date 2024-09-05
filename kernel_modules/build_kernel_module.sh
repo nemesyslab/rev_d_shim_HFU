@@ -20,4 +20,4 @@ fi
 cd "$1" || exit 1
 
 # Run make with ARCH=arm
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- KDIR=$REV_D_SHIM_DIR/snickerdoodle_src/build/kernel

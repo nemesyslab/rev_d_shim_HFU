@@ -28,5 +28,8 @@ fi
 # Change directory to the first argument, checking if the directory exists
 cd "$1" || exit 1
 
+# Display the directory chosen
+echo "Building kernel module(s) in directory: $(pwd)"
+
 # Run the make command
 $MAKE_CMD

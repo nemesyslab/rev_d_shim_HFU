@@ -8,6 +8,7 @@ fi
 
 # Change to the RevD-Shim directory, then to the kernel_modules directory
 cd "$REV_D_SHIM_DIR" || exit 1
+echo "Starting from the RevD-Shim directory (\$REV_D_SHIM_DIR): $REV_D_SHIM_DIR"
 cd kernel_modules || exit 1
 
 # Check if the directory argument is provided

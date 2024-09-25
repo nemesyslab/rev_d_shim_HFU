@@ -1,12 +1,8 @@
 global board_name
 global project_name
 
-set ps_preset boards/${board_name}/ps_${project_name}.xml
-
 # Create processing_system7
-cell xilinx.com:ip:processing_system7:5.5 ps_0 {
-  PCW_IMPORT_BOARD_PRESET $ps_preset
-} {
+cell xilinx.com:ip:processing_system7:5.5 ps_0 {} {
   M_AXI_GP0_ACLK ps_0/FCLK_CLK0
 }
 
@@ -154,7 +150,7 @@ connect_bd_net [get_bd_pins shim_dac_0/spi_sequencer_0/spi_ref_clk] [get_bd_pins
 # Connect output buffers
 
 # Differential output buffer for CS
-cell open-mri:user:lcb_differential_out_buffer:1.0 cs_o_buf {
+cell lcb:user:differential_out_buffer:1.0 cs_o_buf {
   DIFF_BUFFER_WIDTH 1
 } {
   d_in /shim_dac_0/spi_sequencer_0/spi_cs
@@ -162,7 +158,7 @@ cell open-mri:user:lcb_differential_out_buffer:1.0 cs_o_buf {
   diff_out_n cs_o_n
 }
 # Differential output buffer for SPI clock
-cell open-mri:user:lcb_differential_out_buffer:1.0 spi_clk_o_buf {
+cell lcb:user:differential_out_buffer:1.0 spi_clk_o_buf {
   DIFF_BUFFER_WIDTH 1
 } {
   d_in /shim_dac_0/spi_sequencer_0/spi_clk
@@ -170,7 +166,7 @@ cell open-mri:user:lcb_differential_out_buffer:1.0 spi_clk_o_buf {
   diff_out_n spi_clk_o_n
 }
 # Differential output buffer for LDAC
-cell open-mri:user:lcb_differential_out_buffer:1.0 ldac_o_buf {
+cell lcb:user:differential_out_buffer:1.0 ldac_o_buf {
   DIFF_BUFFER_WIDTH 1
 } {
   d_in /shim_dac_0/spi_sequencer_0/spi_ldacn
@@ -178,7 +174,7 @@ cell open-mri:user:lcb_differential_out_buffer:1.0 ldac_o_buf {
   diff_out_n ldac_o_n
 }
 # Differential output buffer for DAC MOSI
-cell open-mri:user:lcb_differential_out_buffer:1.0 dac_mosi_o_buf {
+cell lcb:user:differential_out_buffer:1.0 dac_mosi_o_buf {
   DIFF_BUFFER_WIDTH 4
 } {
   d_in /shim_dac_0/spiconcat_0/Dout

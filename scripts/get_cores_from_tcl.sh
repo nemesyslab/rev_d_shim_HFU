@@ -15,10 +15,12 @@ if [ ! -f "$1" ]; then
     exit 1
 fi
 
-# Make a list of core paths
-paths=()
 
-# Read the file line by line
+## Pull out the cores from the tcl file
+
+# Initialize the list of paths to IP source file locations
+paths=()
+# Read the file line by line to capture paths
 while IFS= read -r line; do
     # Capture the name of any IPs instantiated with the "cell" procedure
     if [[ $line == cell* ]]; then

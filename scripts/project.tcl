@@ -1,16 +1,34 @@
 
 package require fileutil
+package require json
 
 # Arguments: project_name part_name core_vendor_list
 set project_name [lindex $argv 0]
-set part_name [lindex $argv 1]
+set board_name [lindex $argv 1]
 set core_vendor_list [lindex $argv 2]
 
+# Read the config for the board for scripting variables
+if {[file exists boards/${board_name}/board_config.json]} {
+    set board_config_fd [open boards/${board_name}/board_config.json "r"]
+} else {
+    error "Board configuration file boards/${board_name}/board_config.json does not exist.\nThe board \"${board_name}\" may not be supported for this project."
+}
+set board_config_str [read $board_config_fd]
+close $board_config_fd
+set board_config_dict [json::json2dict $board_config_str]
+
+# Get the part name from the config dict
+set part_name [dict get $board_config_dict HDL part]
+set board_part [dict get $board_config_dict HDL board_part]
+
 # Clear out old build files
-file delete -force tmp/$project_name.cache tmp/$project_name.gen tmp/$project_name.hw tmp/$project_name.ip_user_files tmp/$project_name.runs tmp/$project_name.sim tmp/$project_name.srcs tmp/$project_name.xpr
+file delete -force tmp/${board_name}_${project_name}.cache tmp/${board_name}_${project_name}.gen tmp/${board_name}_${project_name}.hw tmp/${board_name}_${project_name}.ip_user_files tmp/${board_name}_${project_name}.runs tmp/${board_name}_${project_name}.sim tmp/${board_name}_${project_name}.srcs tmp/${board_name}_${project_name}.xpr
 
 # Create the project
-create_project -part $part_name $project_name tmp
+create_project -part $part_name ${board_name}_${project_name} tmp
+
+# Set the board part
+set_property BOARD_PART $board_part [current_project]
 
 # Collect the paths to vendor cores directories
 set vendor_cores_paths {}
@@ -112,8 +130,8 @@ proc addr {offset range port master} {
 # Start the block design
 create_bd_design system
 
-# Execute the port definition and block design scripts for the project
-source cfg/ports.tcl
+# Execute the port definition and block design scripts for the project, by board
+source projects/$project_name/$board_name/ports.tcl
 source projects/$project_name/block_design.tcl
 
 # Clear out the processes defined above to avoid conflicts, now that the block design is complete
@@ -131,18 +149,22 @@ set_property SYNTH_CHECKPOINT_MODE None $system
 generate_target all $system
 make_wrapper -files $system -top
 
-set wrapper [fileutil::findByPattern tmp/$project_name.gen system_wrapper.v]
+set wrapper [fileutil::findByPattern tmp/${board_name}_${project_name}.gen system_wrapper.v]
 
 add_files -norecurse $wrapper
 
 set_property TOP system_wrapper [current_fileset]
 
-set files [glob -nocomplain cfg/*.mem projects/$project_name/*.v projects/$project_name/*.sv]
+# TODO: Remove cfg/ from use
+# Load all Verilog and SystemVerilog source files from the project folder, as well as any .mem files
+set files [glob -nocomplain projects/$project_name/*.v projects/$project_name/*.sv, projects/$project_name/*.mem]
 if {[llength $files] > 0} {
   add_files -norecurse $files
 }
 
-set files [glob -nocomplain cfg/*.xdc projects/$project_name/*.xdc]
+# TODO: Remove cfg/ from use
+# Load all XDC constraint files specific to the board from the project folder
+set files [glob -nocomplain projects/$project_name/$board_name/*.xdc]
 if {[llength $files] > 0} {
   add_files -norecurse -fileset constrs_1 $files
 }

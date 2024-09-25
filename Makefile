@@ -1,19 +1,31 @@
 # 'make' builds everything
 # 'make clean' deletes everything except source files and Makefile
 #
-# You need to set NAME, PART and PROC for your project.
-# NAME is the base name for most of the generated files.
+# You need to set PROJECT and BOARD to the project and board you want to build
+# These can be set on the command line, e.g. 'make PROJECT=adc_recorder_limited_cores BOARD=snickerdoodle_black'
 
-# Variables to define the project, chip, and processor
-NAME = adc_recorder_limited_cores
-PART = xc7z010clg400-1
-PROC = ps7_cortexa9_0
+# Default values for PROJECT and BOARD
+PROJECT ?= adc_recorder_limited_cores
+BOARD ?= stemlab_125_14
+
+# Check that the project and board exist
+ifeq (,$(wildcard projects/$(PROJECT)/block_design.tcl))
+$(error Project "$(PROJECT)" or the corresponding block design file "projects/$(PROJECT)/block_design.tcl" does not exist)
+endif
+ifeq (,$(wildcard boards/$(BOARD)/board_config.json))
+$(error Board "$(BOARD)" or the corresponding board configuration file "boards/$(BOARD)/board_config.json" does not exist)
+endif
+ifeq (,$(wildcard projects/$(PROJECT)/$(BOARD)/ports.tcl))
+$(error Board "$(BOARD)" or the corresponding ports file "projects/$(PROJECT)/$(BOARD)/ports.tcl" does not exist for the project "$(PROJECT) -- make sure it's supported by the project")
+endif
+
+# Extract the part and processor from the board configuration file
+export PART=$(shell jq -r '.HDL.part' boards/$(BOARD)/board_config.json)
+export PROC=$(shell jq -r '.HDL.proc' boards/$(BOARD)/board_config.json)
 
 # Get the list of cores from the project file
-PROJECT_CORES = $(shell ./scripts/get_cores_from_tcl.sh projects/$(NAME)/block_design.tcl)
-$(info PROJECT_CORES = $(PROJECT_CORES))
+PROJECT_CORES = $(shell ./scripts/get_cores_from_tcl.sh projects/$(PROJECT)/block_design.tcl)
 VENDOR_LIST = $(shell ./scripts/get_vendors_from_cores.sh "$(PROJECT_CORES)")
-$(info VENDOR_LIST = $(VENDOR_LIST))
 
 # Set up commands
 VIVADO = vivado -nolog -nojournal -mode batch
@@ -24,16 +36,16 @@ RM = rm -rf
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.bit
 
 # Default target (build everything)
-all: tmp/$(NAME).bit boot.bin boot-rootfs.bin
+all: tmp/$(BOARD)_$(PROJECT).bit
 
 # All the cores necessary for the project
 cores: $(addprefix tmp/cores/, $(PROJECT_CORES))
 
 # The Xilinx project file
-xpr: tmp/$(NAME).xpr
+xpr: tmp/$(BOARD)_$(PROJECT).xpr
 
 # The bitstream file
-bit: tmp/$(NAME).bit
+bit: tmp/$(BOARD)_$(PROJECT).bit
 
 # Cores are built using the scripts/package_core.tcl script
 tmp/cores/%: cores/%.v
@@ -42,9 +54,9 @@ tmp/cores/%: cores/%.v
 
 # The project file requires all the cores
 # Built using the scripts/project.tcl script
-tmp/%.xpr: projects/% $(addprefix tmp/cores/, $(PROJECT_CORES))
+tmp/$(BOARD)_$(PROJECT).xpr: projects/$(PROJECT) $(addprefix tmp/cores/, $(PROJECT_CORES))
 	mkdir -p $(@D)
-	$(VIVADO) -source scripts/project.tcl -tclargs $* $(PART) {$(VENDOR_LIST)}
+	$(VIVADO) -source scripts/project.tcl -tclargs $* $(PROJECT) $(BOARD) {$(VENDOR_LIST)}
 
 # The bitstream file requires the project file
 # Built using the scripts/bitstream.tcl script

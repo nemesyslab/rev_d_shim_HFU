@@ -2,7 +2,7 @@
 # 'make clean' deletes everything except source files and Makefile
 #
 # You need to set PROJECT and BOARD to the project and board you want to build
-# These can be set on the command line, e.g. 'make PROJECT=adc_recorder_limited_cores BOARD=snickerdoodle_black'
+# These can be set on the command line, e.g. 'make PROJECT=adc_recorder BOARD=snickerdoodle_black'
 
 # Default values for PROJECT and BOARD
 PROJECT ?= adc_recorder

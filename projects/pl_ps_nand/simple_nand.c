@@ -20,6 +20,17 @@ uint8_t nand_8bit(uint8_t a, uint8_t b, volatile void *cfg, volatile void *sts)
   // Write the data word to the CFG register
   *((uint16_t *)cfg) = data;
 
+  printf("Wrote %04x to CFG register\n", data);
+
+  sleep(1);
+
+  // Check if the data was written
+  uint16_t read_data = *((uint16_t *)cfg);
+  printf("Read %04x from CFG register\n", read_data);
+
+  // Give it a second to process
+  sleep(1);
+
   // Read the data word from the STS register
   return *((uint8_t *)sts);
 }

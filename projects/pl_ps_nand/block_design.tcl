@@ -80,3 +80,12 @@ cell xilinx.com:ip:util_vector_logic not_0 {
   Res hub_0/sts_data
 }
 
+## Concatenate the inputs and outputs and the FCLK to the GPIO
+cell xilinx.com:ip:xlconcat:2.1 spiconcat_0 {
+  NUM_PORTS 3
+} {
+  In0 hub_0/cfg_data
+  In1 not_0/Res
+  In2 ps_0/FCLK_CLK0
+  dout gpio0_tri_io
+}

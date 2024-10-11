@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # This script reads a tcl block design file and extracts the paths of user cores instantiated with the "cell" procedure.
 # The script can recurse into tcl files sourced by the "module" procedure.
 

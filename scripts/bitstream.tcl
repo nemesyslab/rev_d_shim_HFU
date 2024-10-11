@@ -1,3 +1,4 @@
+# Create the bitstream file for the project
 
 set project_name [lindex $argv 0]
 

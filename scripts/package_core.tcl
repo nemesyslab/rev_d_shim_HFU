@@ -1,3 +1,6 @@
+# This script creates a custom Vivado IP core for a given core path and part name.
+# The cores are packaged to tmp/cores/[vendor_name]/[core_name] and used in the project.tcl script.
+
 # First argument is the path to the core (relative to the top-level cores/ directory)
 set core_path [lindex $argv 0]
 # Second argument is the part name

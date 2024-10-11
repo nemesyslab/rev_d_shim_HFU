@@ -35,7 +35,6 @@ export PROC=$(shell jq -r '.HDL.proc' boards/$(BOARD)/board_config.json)
 
 # Get the list of cores from the project file
 PROJECT_CORES = $(shell ./scripts/get_cores_from_tcl.sh projects/$(PROJECT)/block_design.tcl)
-VENDOR_LIST = $(shell ./scripts/get_vendors_from_cores.sh "$(PROJECT_CORES)")
 
 endif ########################################## CLEAN CHECK
 
@@ -68,7 +67,7 @@ tmp/cores/%: cores/%.v
 # Built using the scripts/project.tcl script
 tmp/$(BOARD)_$(PROJECT).xpr: projects/$(PROJECT) $(addprefix tmp/cores/, $(PROJECT_CORES))
 	mkdir -p $(@D)
-	$(VIVADO) -source scripts/project.tcl -tclargs $* $(PROJECT) $(BOARD) {$(VENDOR_LIST)}
+	$(VIVADO) -source scripts/project.tcl -tclargs $* $(PROJECT) $(BOARD)
 
 # The bitstream file requires the project file
 # Built using the scripts/bitstream.tcl script

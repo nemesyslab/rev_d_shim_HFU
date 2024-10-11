@@ -1,6 +1,7 @@
 #!/bin/bash
+# Easily create default XDC and ports.tcl files for a given project and board
 
-# Check if a file is provided as an argument
+# Arguments should be a project name and a board name (not the full directory paths)
 if [ ! $# -eq 2 ]; then
     echo "Usage: $0 <project> <board>"
     exit 1
@@ -8,13 +9,13 @@ fi
 
 # Check if the project exists in "projects"
 if [ ! -d "projects/$1" ]; then
-    echo "Project not found: $1"
+    echo "Project directory not found: projects/$1"
     exit 1
 fi
 
 # Check if the board exists in "boards"
 if [ ! -d "boards/$2" ]; then
-    echo "Board not found: $2"
+    echo "Board directory not found: bards/$2"
     exit 1
 fi
 

@@ -1,11 +1,11 @@
+# This script creates a Vivado project for a given board and project name.
 
 package require fileutil
 package require json
 
-# Arguments: project_name part_name core_vendor_list
+# Arguments: project_name part_name
 set project_name [lindex $argv 0]
 set board_name [lindex $argv 1]
-set core_vendor_list [lindex $argv 2]
 
 # Read the config for the board for scripting variables
 if {[file exists boards/${board_name}/board_config.json]} {
@@ -30,17 +30,8 @@ create_project -part $part_name ${board_name}_${project_name} tmp
 # Set the board part
 set_property BOARD_PART $board_part [current_project]
 
-# Collect the paths to vendor cores directories
-set vendor_cores_paths {}
-foreach vendor $core_vendor_list {
-  set vendor_cores_path "tmp/cores/$vendor"
-  lappend vendor_cores_paths $vendor_cores_path
-}
-foreach vendor_path $vendor_cores_paths {
-  puts "Vendor cores path: $vendor_path"
-}
 # Add the path to the custom IP core packages
-set_property IP_REPO_PATHS $vendor_cores_paths [current_project]
+set_property IP_REPO_PATHS [glob -type d tmp/cores/*] [current_project]
 # Load the custom IP source files
 update_ip_catalog
 

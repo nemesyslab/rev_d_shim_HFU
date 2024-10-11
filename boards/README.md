@@ -9,3 +9,5 @@ Board support can be added here by creating a folder named after the board. The 
   - `proc`: The processor used on the SoC (e.g. `ps7_cortexa9_0`).
   - `board_part`: The Vivado string identifying the board part (e.g. `redpitaya.com:stemlab_125_14:part0:1.0` or `krtkl.com:snickerdoodle_black:part0:1.0`).
 - `default_ports.tcl`: This file should contain the default block design ports for the board. This should match with the default pinout XDC in `default_xdc/`.
+
+Additionally, board folders can contain a `linux_src` directory for Linux kernel support (used for any custom kernel modules required for projects). The `linux_src` needs the any kernel to be built to `linux_src/build/kernel/`, but otherwise can have whatever structure.

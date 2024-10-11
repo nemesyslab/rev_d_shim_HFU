@@ -52,10 +52,5 @@ rev_d_shim/
 │   ├── project.tcl                       - Script to build a Vivado .XPR project file, used in the Makefile
 │   ├── symlink_defaults.sh               - Script to symlink the default "ports.tcl" file and "[board]_xdc" 
 │                                           directory from a given board to a given project
-├── snickerdoodle_src/                    - Snickerdoodle Linux kernel source
-│   ├── README.md                         - Instructions on building the Snickerdoodle kernel
-│   ├── rev-d-shim-snickerdoodle-dts/     - Device tree source for the Rev D shim [submodule]
-│   ├── rev-d-shim-snickerdoodle-linux/   - Linux kernel source with Rev D shim support [submodule]
-│   ├── rev-d-shim-snickerdoodle-uboot/   - UBoot source with Rev D shim support [submodule]
 ├── README.md                             - This file
 ```

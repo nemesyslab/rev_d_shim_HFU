@@ -1,3 +1,4 @@
+# Ignore Vivado generated files
 *.apk
 *.bin
 *.dtb
@@ -10,3 +11,6 @@ tmp
 uImage
 .vscode
 .Xil
+
+# Not to be ignored
+!scripts/vivado_repo_init.tcl

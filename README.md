@@ -1,9 +1,19 @@
 Based on Pavel Demin's Notes on the Red Pitaya Open Source Instrument
-
 http://pavel-demin.github.io/red-pitaya-notes/
+as well as the Open-MRI OCRA project (also based off of Pavel Demin's repo)
+https://github.com/OpenMRI/ocra
 
 
 # Rev D Shim
+
+## Getting Started
+
+First, you'll need the Xilinx/AMD Vivado toolchain installed.
+Second, you'll need to set up the repo's Vivado init script. Read the information inside `scripts/vivado_repo_init.tcl` for more information.
+Finally, to make a project, you can run
+```
+make PROJECT=<project_name> BOARD=<board_name>
+```
 
 ## Directory Structure
 

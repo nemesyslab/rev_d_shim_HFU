@@ -39,17 +39,9 @@ set_property VERSION {1.0} $core
 set_property NAME $core_name $core
 set_property LIBRARY {user} $core
 set_property VENDOR $vendor_name $core
-# Set the vendor display name and company URL based on the vendor name
-if {$vendor_name eq "pavel-demin"} {
-  set_property VENDOR_DISPLAY_NAME {Pavel Demin} $core
-  set_property COMPANY_URL {https://github.com/pavel-demin/red-pitaya-notes} $core
-} elseif {$vendor_name eq "open-mri"} {
-  set_property VENDOR_DISPLAY_NAME {Open MRI} $core
-  set_property COMPANY_URL {https://github.com/OpenMRI/ocra} $core
-} elseif {$vendor_name eq "lcb"} {
-  set_property VENDOR_DISPLAY_NAME {Lincoln Craven-Brightman} $core
-  set_property COMPANY_URL {https://github.com/LincolnCB/rev_d_shim} $core
-}
+
+# Source the info for the vendor display name and company URL
+source cores/$vendor_name/vendor_info.tcl
 set_property SUPPORTED_FAMILIES {zynq Production} $core
 
 puts "Packaging core: $vendor_name:user:$core_name:1.0"

@@ -27,6 +27,7 @@ cell xilinx.com:ip:proc_sys_reset rst_0 {} {
   slowest_sync_clk ps_0/FCLK_CLK0
 }
 
+
 ## Create axi hub, where we use CFG as the inputs and STS as the outputs
 
 # Create axi_hub
@@ -48,6 +49,7 @@ cell pavel-demin:user:axi_hub hub_0 {
 # - Subordinate Port: hub_0/S_AXI
 # - Manager Port (needs / prefix): /ps_0/M_AXI_GP0
 addr 0x40000000 128M hub_0/S_AXI /ps_0/M_AXI_GP0
+
 
 ## Do a NAND on the CFG bits and output to STS
 

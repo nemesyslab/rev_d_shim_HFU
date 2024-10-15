@@ -70,8 +70,8 @@ uint32_t nand_32bit_double_write(uint32_t a, uint32_t b, volatile void *cfg, vol
 int main()
 {
   int fd, i; // File descriptor, loop counter
-  volatile void *cfg; // CFG register in AXI hub (set to 16 bits)
-  volatile void *sts; // STS register in AXI hub (set to 8 bits)
+  volatile void *cfg; // CFG register in AXI hub (set to 64 bits wide)
+  volatile void *sts; // STS register in AXI hub (set to 32 bits wide)
 
   // Open /dev/mem to access physical memory
   printf("Opening /dev/mem...\n");

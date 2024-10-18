@@ -41,7 +41,7 @@ set_property LIBRARY {user} $core
 set_property VENDOR $vendor_name $core
 
 # Source the info for the vendor display name and company URL
-source cores/$vendor_name/vendor_info.tcl
+source cores/$vendor_name/info/vendor_info.tcl
 set_property SUPPORTED_FAMILIES {zynq Production} $core
 
 puts "Packaging core: $vendor_name:user:$core_name:1.0"

@@ -692,6 +692,7 @@ module axi_four_ltc2656_spi #
       endcase
     end // else: !if(~aresetn)
   end // always @ (posedge aclk)
+  
   // this block deals with the memory addressing alone
   always @(posedge aclk)
   begin
@@ -745,37 +746,37 @@ module axi_four_ltc2656_spi #
   // - load the next value from the three BRAM ports and send out with SPI clock
   always @(posedge aclk)
   begin
-  if(~aresetn)
-  begin
-    // when we trigger this block, sync should go to zero
-    spi_clock_enable_reg <= 1'b0;
-    syncn_reg <= 1'b1;
-    ldacn_reg <= 1'b1;
-    spi_sequencer_state_reg <= 8'd5; // start idle
-    spi_transfer_counter_reg <= 8'd0;
-    gradient_update_clock_counter <= 40'd0;
-    serial_clock_counter <= 4'd0;
-    serial_clock_reg <= 1'b0;
-    serial_fe_counter <= 6'd0;
-    post_ldac_count <= 3'd0;
+    if(~aresetn)
+    begin
+      // when we trigger this block, sync should go to zero
+      spi_clock_enable_reg <= 1'b0;
+      syncn_reg <= 1'b1;
+      ldacn_reg <= 1'b1;
+      spi_sequencer_state_reg <= 8'd5; // start idle
+      spi_transfer_counter_reg <= 8'd0;
+      gradient_update_clock_counter <= 40'd0;
+      serial_clock_counter <= 4'd0;
+      serial_clock_reg <= 1'b0;
+      serial_fe_counter <= 6'd0;
+      post_ldac_count <= 3'd0;
 
-    spi_first_cmd_reg <= 1'b1;
-    spi_second_cmd_reg <= 1'b0;
+      spi_first_cmd_reg <= 1'b1;
+      spi_second_cmd_reg <= 1'b0;
 
-    gradient_sample_count_reg <= 16'd0;
+      gradient_sample_count_reg <= 16'd0;
 
-    cmd_word_counter <= 4'd0;
+      cmd_word_counter <= 4'd0;
 
-    // set the last sample index;
-    gradient_nsamples_reg <= (slv_reg0 & 16'hffff) - 1;
+      // set the last sample index;
+      gradient_nsamples_reg <= (slv_reg0 & 16'hffff) - 1;
 
-    // set a version number
-    // 3 - support "external" spi clock
-    // 4 - use trigger to play waveforms
-    // 5 - set the refresh-rate manually via slv_reg4
-    slv_reg10 <= 32'hffff0005;
-    slv_reg9 <= 32'd0;
-  end
+      // set a version number
+      // 3 - support "external" spi clock
+      // 4 - use trigger to play waveforms
+      // 5 - set the refresh-rate manually via slv_reg4
+      slv_reg10 <= 32'hffff0005;
+      slv_reg9 <= 32'd0;
+    end
     else
     begin
       case(spi_sequencer_state_reg)
@@ -1056,7 +1057,6 @@ module axi_four_ltc2656_spi #
         gradient_update_clock_counter <= gradient_update_clock_counter+1;
       end // else: !if(gradient_update_clock_counter == 16'd1430)
     end // else: !if(~aresetn)
-
   end // always @ (posedge aclk)
 
   //assign sts_data = int_addr_reg;

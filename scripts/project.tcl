@@ -107,13 +107,20 @@ proc container {container_name container_designs {container_ports {}}} {
   set_property CONFIG.LIST_SIM_BD $list $container
 }
 
-# Procedure for assigning an address to an interface port
-proc addr {offset range port master} {
+# Procedure for assigning an address for an already-connected AXI interface port
+proc addr {offset range port} {
   set object [get_bd_intf_pins $port]
   set segment [get_bd_addr_segs -of_objects $object]
+  assign_bd_address -offset $offset -range $range $segment
+}
+
+# Automate the creation of an AXI interconnect. This creates an intermediary AXI core.
+#   Note: "master" needs a "/" prefix, "port" does not
+proc auto_connect_axi {offset range port master} {
+  set object [get_bd_intf_pins $port]
   set config [list Master $master Clk Auto]
   apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config $config $object
-  assign_bd_address -offset $offset -range $range $segment
+  addr $offset $range $port
 }
 
 ##############################################################################

@@ -39,6 +39,7 @@ cell pavel-demin:user:axi_hub hub_0 {
   CFG_DATA_WIDTH 64
   STS_DATA_WIDTH 32
 } {
+  S_AXI ps_0/M_AXI_GP0
   aclk ps_0/FCLK_CLK0
   aresetn rst_0/peripheral_aresetn
 }
@@ -47,8 +48,7 @@ cell pavel-demin:user:axi_hub hub_0 {
 # - Offset: 0x40000000
 # - Range: 128M (to 0x47FFFFFF)
 # - Subordinate Port: hub_0/S_AXI
-# - Manager Port (needs / prefix): /ps_0/M_AXI_GP0
-addr 0x40000000 128M hub_0/S_AXI /ps_0/M_AXI_GP0
+addr 0x40000000 128M hub_0/S_AXI
 
 
 ## Do a NAND on the CFG bits and output to STS

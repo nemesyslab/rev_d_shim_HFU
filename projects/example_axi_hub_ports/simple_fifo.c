@@ -12,7 +12,19 @@
 #define AXI_HUB_BASE                  0x40000000
 #define AXI_HUB_CFG     AXI_HUB_BASE + 0x0000000
 #define AXI_HUB_STS     AXI_HUB_BASE + 0x1000000
-#define AXI_HUB_FIFO_0  AXI_HUB_BASE + 0x2000000  
+#define AXI_HUB_FIFO_0  AXI_HUB_BASE + 0x2000000
+
+// Get the write count from the status register
+uint32_t wr_count(volatile void *sts)
+{
+  return *((volatile uint32_t *)sts) & 0b11111;
+}
+
+// Get the read count from the status register
+uint32_t rd_count(volatile void *sts)
+{
+  return (*((volatile uint32_t *)sts) >> 7) & 0b11111;
+}
 
 int main()
 {
@@ -38,41 +50,35 @@ int main()
   printf("CFG register mapped to %x\n", AXI_HUB_CFG);
   sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, AXI_HUB_STS);
   printf("STS register mapped to %x\n", AXI_HUB_STS);
+  fifo_0 = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, AXI_HUB_FIFO_0);
+  printf("FIFO register mapped to %x\n", AXI_HUB_FIFO_0);
 
   close(fd);
   printf("Mapping complete.\n");
 
-  // Perform NAND operation on two 32-bit values
-  uint32_t a = 0x12345678;
-  uint32_t b = 0x87654321;
-  uint32_t expected = ~(a & b);
-
-  printf("Performing double-write NAND operation...\n");
-  uint32_t result = nand_32bit_double_write(a, b, cfg, sts);
-  printf("NAND(0x" PRIx32 ", 0x" PRIx32 ") = 0x" PRIx32 " (expected 0x" PRIx32 ")\n", a, b, result, expected);
-  if (result == expected)
+  // Write 10 32-bit words to the FIFO
+  printf("Writing 10 lines to FIFO with no delay...\n");
+  for(i = 0; i < 10; i++)
   {
-    printf("Double-write NAND operation successful!\n");
-  }
-  else
-  {
-    printf("Double-write NAND operation failed :(\n");
+    *((volatile uint32_t *)fifo_0) = i; // Write to FIFO
+    printf("Wrote %d to FIFO\n", i);
   }
 
-  a = 0xABCDEF01;
-  b = 0x01234567;
-  expected = ~(a & b);
+  // Check FIFO status in register
+  printf("Checking FIFO status...\n");
+  printf("Write count: %d\n", wr_count(sts));
+  printf("Read count: %d\n", rd_count(sts));
 
-  printf("Performing single-write NAND operation...\n");
-  result = nand_32bit_single_write(a, b, cfg, sts);
-  printf("NAND(0x" PRIx32 ", 0x" PRIx32 ") = 0x" PRIx32 " (expected 0x" PRIx32 ")\n", a, b, result, expected);
-  if (result == expected)
+  // Read 5 32-bit words from the FIFO
+  printf("Reading 5 lines from FIFO...\n");
+  for(i = 0; i < 5; i++)
   {
-    printf("Single-write NAND operation successful!\n");
-  }
-  else
-  {
-    printf("Single-write NAND operation failed :(\n");
+    uint32_t data = *((volatile uint32_t *)fifo_0); // Read from FIFO
+    printf("Read %d from FIFO\n", data);
   }
 
+  // Check FIFO status in register
+  printf("Checking FIFO status...\n");
+  printf("Write count: %d\n", wr_count(sts));
+  printf("Read count: %d\n", rd_count(sts));
 }

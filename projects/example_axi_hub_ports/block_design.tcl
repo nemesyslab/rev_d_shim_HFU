@@ -61,8 +61,25 @@ cell lcb:user:axis_fifo_sync fifo_0 {
 } {
   S_AXIS hub_0/M00_AXIS
   M_AXIS hub_0/S00_AXIS
-  aresetn rst_0/peripheral_aresetn
   aclk ps_0/FCLK_CLK0
+}
+
+# Slice out the first CFG bit to be the FIFO's reset signal
+cell pavel-demin:user:port_slicer fifo_0_rst_slice {
+  DIN_WIDTH 32
+  DIN_FROM 0
+  DIN_TO 0
+} {
+  din hub_0/cfg_data
+}
+# Negate it (active 1 from CFG)
+# Do a NOT on the result, output to STS
+cell xilinx.com:ip:util_vector_logic fifo_0_rst_inv {
+  C_SIZE 1
+  C_OPERATION not
+} {
+  Op1 fifo_0_rst_slice/dout
+  Res fifo_0/aresetn
 }
 
 # Concatenate the FIFO's status signals to the axi_hub's status signals

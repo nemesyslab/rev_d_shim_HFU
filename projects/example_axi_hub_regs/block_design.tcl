@@ -10,10 +10,11 @@ cell xilinx.com:ip:processing_system7:5.5 ps_0 {} {
 # - Apply the board preset
 apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 -config {
   make_external {FIXED_IO, DDR}
-  apply_board_preset "1"
+  apply_board_preset 1
   Master Disable
   Slave Disable
 } [get_bd_cells ps_0]
+
 
 
 ## Create the reset hub

@@ -11,7 +11,7 @@ cell xilinx.com:ip:processing_system7:5.5 ps_0 {} {
 # - Make the processing system's FIXED_IO and DDR interfaces external
 apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 -config {
   make_external {FIXED_IO, DDR}
-  apply_board_preset "1"
+  apply_board_preset 1
   Master Disable
   Slave Disable
 } [get_bd_cells ps_0]

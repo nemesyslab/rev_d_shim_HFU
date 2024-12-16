@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
     exit(-1);
   }
 
-  usleep(50000);
+  usleep(250000);
 
 
 
@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
   
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  usleep(50000);
+  usleep(250000);
 
 
   //// Map the memory
@@ -221,7 +221,7 @@ int main(int argc, char *argv[])
   slcr[2] = SLCR_LOCK_CODE;
   printf(".... Done !\n"); fflush(stdout);
 
-  usleep(50000);
+  usleep(250000);
 
   // Check version etc
   dac_nsamples = ((uint32_t *)(dac_ctrl+0));
@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
 
   *trigger_lockout_ptr = (uint32_t)(floor(atof(argv[1]) * 1e-3 * FCLK0_BASELINE_FREQ / (fclk0_div0 * fclk0_div1)));
 
-  usleep(50000);
+  usleep(250000);
   
   printf("Trigger lockout = %d FPGA clockcycles\n", *trigger_lockout_ptr);
   *trigger_polarity = 1;
@@ -253,7 +253,7 @@ int main(int argc, char *argv[])
   }
 
   *dac_nsamples = line_counter * 8;
-  *dac_board_offset = line_counter * 8; // the boards copy each other
+  *dac_board_offset = line_counter * 8; // the boards have the same amount of samples
   int dbo = *dac_board_offset;
 
   fprintf(stdout, "board offset %d words\n", dbo);
@@ -261,7 +261,18 @@ int main(int argc, char *argv[])
 
   //// Load the sequence into the shim memory
 
+  for (int sample = 0; sample < line_counter; sample++)  {
+    for (int channel = 0; channel < 8; channel++) {
+      for (int board = 0; board < 4; board++) {
+        shim_memory[board * dbo + sample * 8 + channel] = \
+          ((channel | DAC_CMD) << 16) + (waveform_buffer[board * 8 + channel][sample] & 0xffff);
+      }
+    }
+  }
+
+  //// Check the sequence in the shim memory
   if (argc == 6) {
+    int cmd_word = 0x0;
     printf("Logging board %d\n", board_to_log);
     fd = open("shim.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0) {
@@ -269,22 +280,28 @@ int main(int argc, char *argv[])
       exit(1);
     }
     for (int sample = 0; sample < line_counter; sample++) {
+      dprintf(fd, "Sample %d\n", sample);
       for (int channel = 0; channel < 8; channel++) {
-        dprintf(fd, "%d\n", waveform_buffer[board_to_log*8+channel][sample]);
-      }
-    }
-  }
 
-  for (int sample = 0; sample < line_counter; sample++)  {
-    for (int channel = 0; channel < 8; channel++) {
-      // board zero
-      shim_memory[sample*8+channel      ] = ((channel | DAC_CMD) << 16) + (waveform_buffer[channel][sample] & 0xffff);
-      // board one
-      shim_memory[sample*8+channel+dbo  ] = ((channel | DAC_CMD) << 16) + (waveform_buffer[8+channel][sample] & 0xffff);
-      // board two
-      shim_memory[sample*8+channel+2*dbo] = ((channel | DAC_CMD) << 16) + (waveform_buffer[16+channel][sample] & 0xffff);
-      // board three
-      shim_memory[sample*8+channel+3*dbo] = ((channel | DAC_CMD) << 16) + (waveform_buffer[24+channel][sample] & 0xffff);
+        // Print the expected values
+        dprintf(fd, "Expected:\n");
+        dprintf(fd, "  Ch%02d to %05d [0b", channel, waveform_buffer[board_to_log*8+channel][sample]);
+        cmd_word = ((channel | DAC_CMD) << 16) + (waveform_buffer[board_to_log*8+channel][sample] & 0xffff);
+        for (int bit = 23; bit >= 0; bit--) {
+          dprintf(fd, "%d", (cmd_word >> bit) & 0x1);
+        }
+        dprintf(fd, "]\n");
+
+        // // DOESN'T WORK BECAUSE SHIM_MEMORY IS WRITE ONLY
+        // // Print the loaded values
+        // cmd_word = shim_memory[sample*8+channel+board_to_log*dbo];
+        // dprintf(fd, "Loaded:\n");
+        // dprintf(fd, "  Ch%02d to %05d [0b", (cmd_word >> 16) & 0xf, cmd_word & 0xffff);
+        // for (int bit = 23; bit >= 0; bit--) {
+        //   dprintf(fd, "%d", (cmd_word >> bit) & 0x1);
+        // }
+        // dprintf(fd, "]\n");
+      }
     }
   }
   
@@ -302,7 +319,7 @@ int main(int argc, char *argv[])
 
   while(1) {
     printf(".... trigger count = %d (tc = %d)!\n", *dac_trigger_count, *tc_trigger_count); fflush(stdout);
-    sleep(5);
+    sleep(3);
   }
   
   sleep(1);

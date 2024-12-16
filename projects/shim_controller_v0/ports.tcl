@@ -12,3 +12,6 @@ create_bd_port -dir O ldac_o_p
 create_bd_port -dir O ldac_o_n
 create_bd_port -dir O -from 3 -to 0 dac_mosi_o_p
 create_bd_port -dir O -from 3 -to 0 dac_mosi_o_n
+
+# # AXI clock out (DEBUG)
+# create_bd_port -dir O axi_clk_out

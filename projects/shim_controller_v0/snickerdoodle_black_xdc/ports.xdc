@@ -80,8 +80,8 @@ set_property PACKAGE_PIN T10 [get_ports {dac_mosi_o_n[1]}]
 set_property PACKAGE_PIN U5  [get_ports {dac_mosi_o_n[2]}]
 set_property PACKAGE_PIN U17 [get_ports {dac_mosi_o_n[3]}]
 
-# AXI clock out, single-ended (DEBUG)
-# Pin:
-#   AXI_CLK_OUT JB2.4 R19
-set_property IOSTANDARD LVCMOS25 [get_ports axi_clk_out]
-set_property PACKAGE_PIN R19 [get_ports axi_clk_out]
+# # AXI clock out, single-ended (DEBUG)
+# # Pin:
+# #   AXI_CLK_OUT JB2.4 R19
+# set_property IOSTANDARD LVCMOS25 [get_ports axi_clk_out]
+# set_property PACKAGE_PIN R19 [get_ports axi_clk_out]

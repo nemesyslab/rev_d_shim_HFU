@@ -68,7 +68,7 @@ RM = rm -rf
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.bit
 
 # Targets that aren't real files
-.PHONY: all clean cleanall bit rootfs boot cores xpr xsa
+.PHONY: all clean cleanall bit sd rootfs boot cores xpr xsa
 
 #############################################
 
@@ -103,6 +103,9 @@ cleanall: clean
 bit: tmp/$(BOARD)/$(PROJECT)/bitstream.bit
 	mkdir -p out/$(BOARD)/$(PROJECT)
 	cp tmp/$(BOARD)/$(PROJECT)/bitstream.bit out/$(BOARD)/$(PROJECT)/system.bit
+
+# All the files necessary for a bootable SD card
+sd: boot rootfs
 
 # The compressed root filesystem
 # Made in the petalinux build
@@ -173,7 +176,7 @@ tmp/cores/%: cores/%.v
 # Requires all the cores
 # Built using the `scripts/project.tcl` script, which uses
 # 	the block design and ports files from the project
-tmp/$(BOARD)/$(PROJECT)/project.xpr: $(addprefix tmp/cores/, $(PROJECT_CORES))
+tmp/$(BOARD)/$(PROJECT)/project.xpr: projects/$(PROJECT) $(addprefix tmp/cores/, $(PROJECT_CORES))
 	@./scripts/makefile_status.sh "MAKING PROJECT: $(BOARD)/$(PROJECT)/project.xpr"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/project.tcl -tclargs $(BOARD) $(PROJECT)

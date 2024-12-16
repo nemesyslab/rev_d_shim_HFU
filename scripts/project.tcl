@@ -67,6 +67,10 @@ proc wire {name1 name2} {
 }
 
 # Procedure for creating a cell
+#  cell_vlnv: VLNV of the cell (vendor:library:name:version)
+#  cell_name: name of the cell
+#  cell_props: dictionary of properties to set
+#  cell_ports: dictionary of ports to wire (put the local name first)
 proc cell {cell_vlnv cell_name {cell_props {}} {cell_ports {}}} {
   set cell [create_bd_cell -type ip -vlnv $cell_vlnv $cell_name]
   set prop_list {}
@@ -82,6 +86,9 @@ proc cell {cell_vlnv cell_name {cell_props {}} {cell_ports {}}} {
 }
 
 # Procedure for initializing the processing system
+#  ps_name: name of the processing system
+#  preset: 0 or 1 (0 for default, 1 for board preset)
+#  ps_props: dictionary of properties to set
 proc init_ps {ps_name preset {ps_props {}} {ps_ports {}}} {
   
   # Create the PS
@@ -110,6 +117,9 @@ proc init_ps {ps_name preset {ps_props {}} {ps_ports {}}} {
 }
 
 # Procedure for creating a module sourced from another tcl script
+#  module_name: name of the module
+#  module_body: body of the module (can be sourced from another tcl script)
+#  module_ports: dictionary of ports to wire (put the local name first)
 proc module {module_name module_body {module_ports {}}} {
   set instance [current_bd_instance .]
   current_bd_instance [create_bd_cell -type hier $module_name]

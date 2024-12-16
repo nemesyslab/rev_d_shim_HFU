@@ -39,8 +39,8 @@ module axi_bram_writer #
   output wire                         bram_porta_rst,
   (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 bram_porta ADDR" *)
   output wire [BRAM_ADDR_WIDTH-1:0]   bram_porta_addr,
-  (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 bram_porta WRDATA" *)
-  output wire [BRAM_DATA_WIDTH-1:0]   bram_porta_wrdata,
+  (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 bram_porta DIN" *)
+  output wire [BRAM_DATA_WIDTH-1:0]   bram_porta_wdata,
   (* X_INTERFACE_INFO = "xilinx.com:interface:bram:1.0 bram_porta WE" *)
   output wire [BRAM_DATA_WIDTH/8-1:0] bram_porta_we
 );
@@ -92,7 +92,7 @@ module axi_bram_writer #
   assign bram_porta_clk = aclk;
   assign bram_porta_rst = ~aresetn;
   assign bram_porta_addr = s_axi_awaddr[ADDR_LSB+BRAM_ADDR_WIDTH-1:ADDR_LSB];
-  assign bram_porta_wrdata = s_axi_wdata;
+  assign bram_porta_wdata = s_axi_wdata;
   assign bram_porta_we = int_wvalid_wire ? s_axi_wstrb : {(BRAM_DATA_WIDTH/8){1'b0}};
 
 endmodule

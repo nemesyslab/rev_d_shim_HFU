@@ -55,7 +55,7 @@ export PART=$(shell jq -r '.part' boards/$(BOARD)/board_config.json)
 export PROC=$(shell jq -r '.proc' boards/$(BOARD)/board_config.json)
 
 # Get the list of necessary cores from the project file to avoid building unnecessary cores
-PROJECT_CORES = $(shell ./scripts/get_cores_from_tcl.sh projects/$(PROJECT)/block_design.tcl)
+PROJECT_CORES = $(shell ./scripts/make/get_cores_from_tcl.sh projects/$(PROJECT)/block_design.tcl)
 
 endif # Clean check
 
@@ -82,13 +82,13 @@ all: sd
 
 # Remove the intermediate and temporary files
 clean:
-	@./scripts/makefile_status.sh "CLEANING"
+	@./scripts/make/status.sh "CLEANING"
 	$(RM) .Xil
 	$(RM) tmp
 
 # Remove the output files too
 cleanall: clean
-	@./scripts/makefile_status.sh "CLEANING OUTPUT FILES"
+	@./scripts/make/status.sh "CLEANING OUTPUT FILES"
 	$(RM) out
 
 #############################################
@@ -117,7 +117,7 @@ rootfs: tmp/$(BOARD)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
 # Requires the petalinux build (which will make the rootfs)
 boot: tmp/$(BOARD)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
 	mkdir -p out/$(BOARD)/$(PROJECT)
-	@./scripts/makefile_status.sh "PACKAGING BOOT.BIN"
+	@./scripts/make/status.sh "PACKAGING BOOT.BIN"
 	cd tmp/$(BOARD)/$(PROJECT)/petalinux && \
 		source $(PETALINUX_PATH)/settings.sh && \
 		petalinux-package --boot \
@@ -146,7 +146,7 @@ boot: tmp/$(BOARD)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
 # Separated in `tmp/cores` by vendor
 # The necessary cores for the specific project are extracted  
 # 	from `block_design.tcl` (recursively by sub-modules)  
-#		by `scripts/get_cores_from_tcl.sh`
+#		by `scripts/make/get_cores_from_tcl.sh`
 cores: $(addprefix tmp/cores/, $(PROJECT_CORES))
 
 # The Xilinx project file
@@ -166,40 +166,40 @@ xsa: tmp/$(BOARD)/$(PROJECT)/hw_def.xsa
 #############################################
 
 # Core RTL needs to be packaged to be used in the block design flow
-# Cores are packaged using the `scripts/package_core.tcl` script
+# Cores are packaged using the `scripts/vivado/package_core.tcl` script
 tmp/cores/%: cores/%.v
-	@./scripts/makefile_status.sh "MAKING CORE: $*"
+	@./scripts/make/status.sh "MAKING CORE: $*"
 	mkdir -p $(@D)
-	$(VIVADO) -source scripts/package_core.tcl -tclargs $* $(PART)
+	$(VIVADO) -source scripts/vivado/package_core.tcl -tclargs $* $(PART)
 
 # The project file (.xpr)
 # Requires all the cores
-# Built using the `scripts/project.tcl` script, which uses
+# Built using the `scripts/vivado/project.tcl` script, which uses
 # 	the block design and ports files from the project
 tmp/$(BOARD)/$(PROJECT)/project.xpr: projects/$(PROJECT) $(addprefix tmp/cores/, $(PROJECT_CORES))
-	@./scripts/makefile_status.sh "MAKING PROJECT: $(BOARD)/$(PROJECT)/project.xpr"
+	@./scripts/make/status.sh "MAKING PROJECT: $(BOARD)/$(PROJECT)/project.xpr"
 	mkdir -p $(@D)
-	$(VIVADO) -source scripts/project.tcl -tclargs $(BOARD) $(PROJECT)
+	$(VIVADO) -source scripts/vivado/project.tcl -tclargs $(BOARD) $(PROJECT)
 
 # The bitstream file (.bit)
 # Requires the project file
-# Built using the `scripts/bitstream.tcl` script, with bitstream compression set to false
+# Built using the `scripts/vivado/bitstream.tcl` script, with bitstream compression set to false
 tmp/$(BOARD)/$(PROJECT)/bitstream.bit: tmp/$(BOARD)/$(PROJECT)/project.xpr
-	@./scripts/makefile_status.sh "MAKING BITSTREAM: $(BOARD)/$(PROJECT)/bitstream.bit"
-	$(VIVADO) -source scripts/bitstream.tcl -tclargs $(BOARD)/$(PROJECT) false
+	@./scripts/make/status.sh "MAKING BITSTREAM: $(BOARD)/$(PROJECT)/bitstream.bit"
+	$(VIVADO) -source scripts/vivado/bitstream.tcl -tclargs $(BOARD)/$(PROJECT) false
 
 # The hardware definition file
 # Requires the project file
-# Built using the scripts/hw_def.tcl script
+# Built using the scripts/vivado/hw_def.tcl script
 tmp/$(BOARD)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(PROJECT)/project.xpr
-	@./scripts/makefile_status.sh "MAKING HW DEF: $(BOARD)/$(PROJECT)/hw_def.xsa"
-	$(VIVADO) -source scripts/hw_def.tcl -tclargs $(BOARD)/$(PROJECT)
+	@./scripts/make/status.sh "MAKING HW DEF: $(BOARD)/$(PROJECT)/hw_def.xsa"
+	$(VIVADO) -source scripts/vivado/hw_def.tcl -tclargs $(BOARD)/$(PROJECT)
 
 # The compressed root filesystem
 # Requires the hardware definition file
-# Build using the scripts/petalinux_build.sh file
+# Build using the scripts/petalinux/build.sh file
 tmp/$(BOARD)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz: tmp/$(BOARD)/$(PROJECT)/hw_def.xsa
-	@./scripts/makefile_status.sh "MAKING LINUX SYSTEM: $(BOARD)/$(PROJECT)/petalinux"
+	@./scripts/make/status.sh "MAKING LINUX SYSTEM: $(BOARD)/$(PROJECT)/petalinux"
 	source $(PETALINUX_PATH)/settings.sh && \
-		scripts/petalinux_build.sh $(BOARD) $(PROJECT)
+		scripts/petalinux/build.sh $(BOARD) $(PROJECT)
 

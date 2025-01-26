@@ -1,6 +1,6 @@
 #!/bin/bash
 # Create a patch file for the PetaLinux filesystem configuration
-# Usage: petalinux_config_rootfs.sh <board_name> <project_name> ['update' (optional)]
+# Arguments: <board_name> <project_name> ['update' (optional)]
 if [ $# -ne 2 ] && [ $# -ne 3 ]; then
     echo "Usage: $0 <board_name> <project_name> ['update' (optional)]"
     exit 1
@@ -45,7 +45,7 @@ if [ ! -f "projects/${PRJ}/petalinux_cfg/config.patch" ]; then
     echo "Missing PetaLinux project configuration patch for project ${PRJ}: projects/${PRJ}/petalinux_cfg/config.patch"
     echo "First run the following command:"
     echo
-    echo "  scripts/petalinux_config_project.sh ${BRD} ${PRJ}"
+    echo "  scripts/petalinux/config_project.sh ${BRD} ${PRJ}"
     echo
     exit 1
 fi

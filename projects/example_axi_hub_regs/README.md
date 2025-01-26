@@ -9,7 +9,7 @@ The project's block design (`block_design.tcl`) goes as follows:
 - Initialize the the processing system. Here, the Manager AXI port clock is sourced from the PS's FPGA interface clock `FCLK_CLK0`.
 - Run board automation to automatically connect all the PS's fixed IO and RAM connections (`DDR`).
 - Create a reset hub that can generate a reset signal that the AMD Xilinx tools will handle correctly. The hub is connected to a constant 0 and outputs a constant 1 to `peripheral_aresetn`.
-- Instantiate and connect Pavel's AXI hub. Set the CFG data width to 64 bits, and STS to 32. We'll use the CFG to store the input and STS as the place to grab the output. To set the address, use the TCL procedure `addr` (defined in `scripts/project.tcl`) with base `0x40000000` and range `128M` (goes to `0x47FFFFFF` to fully cover the AXI hub). The CFG and STS might need to be 32-bit multiples.
+- Instantiate and connect Pavel's AXI hub. Set the CFG data width to 64 bits, and STS to 32. We'll use the CFG to store the input and STS as the place to grab the output. To set the address, use the TCL procedure `addr` (defined in `scripts/vivado/project.tcl`) with base `0x40000000` and range `128M` (goes to `0x47FFFFFF` to fully cover the AXI hub). The CFG and STS might need to be 32-bit multiples.
 - Use port slicers and vector logic blocks to run a quick NAND between each half of the CFG register, and output to the STS register.
 
 ## C Code

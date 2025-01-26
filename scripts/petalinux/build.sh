@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build a PetaLinux project for the given board and project
-# Usage: petalinux.sh <board_name> <project_name>
+# Arguments: <board_name> <project_name>
 if [ $# -ne 2 ]; then
     echo "[PTLNX BUILD SCRIPT] ERROR:"
     echo "Usage: $0 <board_name> <project_name>"
@@ -36,7 +36,7 @@ if [ ! -f "projects/${PRJ}/petalinux_cfg/config.patch" ]; then
     echo "Missing PetaLinux project configuration patch file for project ${PRJ}: projects/${PRJ}/petalinux_cfg/config.patch"
     echo "You can create this file by running the following command:"
     echo
-    echo "  scripts/petalinux_config_project.sh ${BRD} ${PRJ}"
+    echo "  scripts/petalinux/config_project.sh ${BRD} ${PRJ}"
     echo
     exit 1
 fi
@@ -45,7 +45,7 @@ if [ ! -f "projects/${PRJ}/petalinux_cfg/rootfs_config.patch" ]; then
     echo "Missing PetaLinux filesystem configuration patch file for project ${PRJ}: projects/${PRJ}/petalinux_cfg/rootfs_config.patch"
     echo "You can create this file by running the following command:"
     echo
-    echo "  scripts/petalinux_config_rootfs.sh ${BRD} ${PRJ}"
+    echo "  scripts/petalinux/config_rootfs.sh ${BRD} ${PRJ}"
     echo
     exit 1
 fi

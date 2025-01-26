@@ -21,6 +21,7 @@ fi
 
 # Check if terminal width is at least 80 columns
 if [ $(tput cols) -lt 80 ] || [ $(tput lines) -lt 19 ]; then
+    echo "[PTLNX CFG SCRIPT] ERROR:"
     echo "Terminal must be at least 80 columns wide and 19 lines tall to use the PetaLinux configuration menu."
     exit 1
 fi
@@ -34,12 +35,14 @@ set --
 
 # Check that the project exists in "projects"
 if [ ! -d "projects/${PRJ}" ]; then
-    echo "Project directory not found: projects/${PRJ}"
+    echo "[PTLNX CFG SCRIPT] ERROR:"
+    echo "Repository project directory not found: projects/${PRJ}"
     exit 1
 fi
 
 # Check that the project configuration patch does not already exist if not updating
 if [ -f "projects/${PRJ}/petalinux_cfg/config.patch" ] && [ $UPDATE -ne 1 ]; then
+    echo "[PTLNX CFG SCRIPT] ERROR:"
     echo "PetaLinux project configuration patch already exists for project ${PRJ}: projects/${PRJ}/petalinux_cfg/config.patch"
     echo "If you want to use that patch as the start point, use the following command:"
     echo
@@ -49,7 +52,8 @@ fi
 
 # Check that the project configuration patch DOES exist if updating
 if [ ! -f "projects/${PRJ}/petalinux_cfg/config.patch" ] && [ $UPDATE -eq 1 ]; then
-    echo "PetaLinux project configuration patch not found for project ${PRJ}: projects/${PRJ}/petalinux_cfg/config.patch"
+    echo "[PTLNX CFG SCRIPT] ERROR:"
+    echo "Missing PetaLinux project configuration patch for project ${PRJ}: projects/${PRJ}/petalinux_cfg/config.patch"
     echo "If you want to create a new patch, copy one in or use the following command:"
     echo
     echo "  ${CMD} ${BRD} ${PRJ}"
@@ -59,7 +63,8 @@ fi
 
 # Check that the necessary XSA exists
 if [ ! -f "tmp/${BRD}/${PRJ}/hw_def.xsa" ]; then
-    echo "Missing generated XSA hardware definition file: tmp/${BRD}/${PRJ}/hw_def.xsa"
+    echo "[PTLNX CFG SCRIPT] ERROR:"
+    echo "Missing Vivado-generated XSA hardware definition file: tmp/${BRD}/${PRJ}/hw_def.xsa"
     echo "First run the following command:"
     echo
     echo "  make BOARD=${BRD} PROJECT=${PRJ} xsa"
@@ -81,25 +86,29 @@ petalinux-create -t project --template zynq --name petalinux
 cd petalinux
 
 # Initialize the default project configuration
-echo "[CONFIG SCRIPT] Initializing default project configuration"
+echo "[PTLNX CFG SCRIPT] Initializing default PetaLinux project configuration"
 petalinux-config --get-hw-description ../../${BRD}/${PRJ}/hw_def.xsa --silentconfig
 
 # Copy the default project configuration
-echo "[CONFIG SCRIPT] Saving default project configuration"
+echo "[PTLNX CFG SCRIPT] Saving default PetaLinux project configuration"
 cp project-spec/configs/config project-spec/configs/config.default
 
 # If updating, apply the existing patch
 if [ $UPDATE -eq 1 ]; then
-    echo "[CONFIG SCRIPT] Applying existing project configuration patch"
+    echo "[PTLNX CFG SCRIPT] Applying existing PetaLinux project configuration patch"
     patch project-spec/configs/config ../../../projects/${PRJ}/petalinux_cfg/config.patch
 fi
 
 # Manually configure the project
-echo "[CONFIG SCRIPT] Manually configuring project"
+echo "[PTLNX CFG SCRIPT] Manually configuring project"
 petalinux-config
 
 # Create a patch for the project configuration
-echo "[CONFIG SCRIPT] Creating project configuration patch"
+echo "[PTLNX CFG SCRIPT] Creating PetaLinux project configuration patch"
 diff -u project-spec/configs/config.default project-spec/configs/config | \
     tail -n +3 > \
     ../../../projects/${PRJ}/petalinux_cfg/config.patch
+
+# Replace the patched project configuration with the default
+echo "[PTLNX CFG SCRIPT] Restoring default PetaLinux project configuration for template project"
+cp project-spec/configs/config.default project-spec/configs/config

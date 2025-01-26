@@ -2,6 +2,7 @@
 # Build a PetaLinux project for the given board and project
 # Usage: petalinux.sh <board_name> <project_name>
 if [ $# -ne 2 ]; then
+    echo "[PTLNX BUILD SCRIPT] ERROR:"
     echo "Usage: $0 <board_name> <project_name>"
     exit 1
 fi
@@ -11,9 +12,17 @@ BRD=${1}
 PRJ=${2}
 set --
 
+# Check that the project exists in "projects"
+if [ ! -d "projects/${PRJ}" ]; then
+    echo "[PTLNX BUILD SCRIPT] ERROR:"
+    echo "Repository project directory not found: projects/${PRJ}"
+    exit 1
+fi
+
 # Check that the necessary XSA exists
 if [ ! -f "tmp/${BRD}/${PRJ}/hw_def.xsa" ]; then
-    echo "Missing generated XSA hardware definition file: tmp/${BRD}/${PRJ}/hw_def.xsa."
+    echo "[PTLNX BUILD SCRIPT] ERROR:"
+    echo "Missing Vivado-generated XSA hardware definition file: tmp/${BRD}/${PRJ}/hw_def.xsa."
     echo "First run the following command:"
     echo
     echo "  make BOARD=${BRD} PROJECT=${PRJ} xsa"
@@ -23,6 +32,7 @@ fi
 
 # Check that the necessary PetaLinux config files exist
 if [ ! -f "projects/${PRJ}/petalinux_cfg/config.patch" ]; then
+    echo "[PTLNX BUILD SCRIPT] ERROR:"
     echo "Missing PetaLinux project configuration patch file for project ${PRJ}: projects/${PRJ}/petalinux_cfg/config.patch"
     echo "You can create this file by running the following command:"
     echo
@@ -31,6 +41,7 @@ if [ ! -f "projects/${PRJ}/petalinux_cfg/config.patch" ]; then
     exit 1
 fi
 if [ ! -f "projects/${PRJ}/petalinux_cfg/rootfs_config.patch" ]; then
+    echo "[PTLNX BUILD SCRIPT] ERROR:"
     echo "Missing PetaLinux filesystem configuration patch file for project ${PRJ}: projects/${PRJ}/petalinux_cfg/rootfs_config.patch"
     echo "You can create this file by running the following command:"
     echo
@@ -45,19 +56,19 @@ petalinux-create -t project --template zynq --name petalinux --force
 cd petalinux
 
 # Patch the project configuration
-echo "[MAKE SCRIPT] Initializing default project configuration"
+echo "[PTLNX BUILD SCRIPT] Initializing default PetaLinux project configuration"
 petalinux-config --get-hw-description ../hw_def.xsa --silentconfig
-echo "[MAKE SCRIPT] Patching and configuring project"
+echo "[PTLNX BUILD SCRIPT] Patching and configuring PetaLinux project"
 patch project-spec/configs/config ../../../../projects/${PRJ}/petalinux_cfg/config.patch
 petalinux-config --silentconfig
 
 # Patch the root filesystem configuration
-echo "[MAKE SCRIPT] Initializing default root filesystem configuration"
+echo "[PTLNX BUILD SCRIPT] Initializing default PetaLinux root filesystem configuration"
 petalinux-config -c rootfs --silentconfig
-echo "[MAKE SCRIPT] Patching and configuring root filesystem"
+echo "[PTLNX BUILD SCRIPT] Patching and configuring PetaLinux root filesystem"
 patch project-spec/configs/rootfs_config ../../../../projects/${PRJ}/petalinux_cfg/rootfs_config.patch
 petalinux-config -c rootfs --silentconfig
 
 # Build the project
-echo "[MAKE SCRIPT] Building the project"
+echo "[PTLNX BUILD SCRIPT] Building the PetaLinux project"
 petalinux-build

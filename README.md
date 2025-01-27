@@ -95,7 +95,7 @@ See the README in the `projects/` directory.
 
 ## Directory Structure
 
-This repository is organized as follows. Repositories will contain README files with more information on the folders and files within them.
+This repository is organized as follows. Repositories will contain README files with more information on the folders and files within them (when I get to it...).
 ```
 rev_d_shim/
 ├── boards/                               - Board files for different supported boards

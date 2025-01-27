@@ -11,19 +11,20 @@ set project_name [lindex $argv 1]
 set tmp_dir tmp/${board_name}/${project_name}
 
 ## Extract the part information from the board name
-# Read the script config for the board into a dict
-if {[file exists boards/${board_name}/board_config.json]} {
-    set board_config_fd [open boards/${board_name}/board_config.json "r"]
+# Read the json config for the board into a dict
+set board_cfg_fname boards/${board_name}/board_config.json
+if {[file exists $board_cfg_fname]} {
+    set board_cfg_fd [open $board_cfg_fname "r"]
 } else {
-    error "Board configuration file boards/${board_name}/board_config.json does not exist.\nThe board \"${board_name}\" may not be supported for this project."
+    error "Board configuration file ${board_cfg_fname} missing."
 }
-set board_config_str [read $board_config_fd]
-close $board_config_fd
-set board_config_dict [json::json2dict $board_config_str]
+set board_cfg_str [read $board_cfg_fd]
+close $board_cfg_fd
+set board_cfg_dict [json::json2dict $board_cfg_str]
 
 # Get the part name from the config dict
-set part_name [dict get $board_config_dict part]
-set board_part [dict get $board_config_dict board_part]
+set part_name [dict get $board_cfg_dict part]
+set board_part [dict get $board_cfg_dict board_part]
 
 
 ## Initialize the project and dependencies

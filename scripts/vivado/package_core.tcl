@@ -1,6 +1,9 @@
 # This script creates a custom Vivado IP core for a given core path and part name.
 # The cores are packaged to tmp/cores/[vendor_name]/[core_name] and used in the project.tcl script.
 
+package require fileutil
+package require json
+
 # First argument is the path to the core (relative to the top-level cores/ directory)
 set core_path [lindex $argv 0]
 # Second argument is the part name
@@ -40,8 +43,20 @@ set_property NAME $core_name $core
 set_property LIBRARY {user} $core
 set_property VENDOR $vendor_name $core
 
-# Source the info for the vendor display name and company URL
-source cores/$vendor_name/info/vendor_info.tcl
+## Extract the info for the vendor display name and company URL
+# Read the json config for the board into a dict
+set vendor_info_fname cores/$vendor_name/info/vendor_info.json
+if {[file exists $vendor_info_fname]} {
+    set vendor_info_fd [open $vendor_info_fname "r"]
+} else {
+    error "Vendor info file ${vendor_info_fname} missing."
+}
+set vendor_info_str [read $vendor_info_fd]
+close $vendor_info_fd
+set vendor_info_dict [json::json2dict $vendor_info_str]
+
+set_property VENDOR_DISPLAY_NAME [dict get $vendor_info_dict display_name] $core
+set_property COMPANY_URL [dict get $vendor_info_dict url] $core
 set_property SUPPORTED_FAMILIES {zynq Production} $core
 
 puts "Packaging core: $vendor_name:user:$core_name:1.0"

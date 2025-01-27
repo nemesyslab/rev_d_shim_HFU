@@ -39,6 +39,13 @@ if [ ! -d "projects/${PRJ}" ]; then
     exit 1
 fi
 
+# Check that the board cfg directory (and petalinux directory) exists
+if [ ! -d "projects/${PRJ}/cfg/${BRD}/petalinux" ]; then
+    echo "[PTLNX CFG SCRIPT] ERROR:"
+    echo "Board PetaLinux configuration directory not found: projects/${PRJ}/cfg/${BRD}/petalinux"
+    exit 1
+fi
+
 # Check that the PetaLinux project configuration patch exists
 if [ ! -f "projects/${PRJ}/cfg/${BRD}/petalinux/config.patch" ]; then
     echo "[PTLNX ROOTFS SCRIPT] ERROR:"
@@ -98,7 +105,7 @@ cd petalinux
 echo "[PTLNX ROOTFS SCRIPT] Initializing default PetaLinux project configuration"
 petalinux-config --get-hw-description ../../${BRD}/${PRJ}/hw_def.xsa --silentconfig
 echo "[PTLNX ROOTFS SCRIPT] Patching and configuring PetaLinux project"
-patch project-spec/configs/config ../../../../projects/${PRJ}/cfg/${BRD}/petalinux/config.patch
+patch project-spec/configs/config ../../../projects/${PRJ}/cfg/${BRD}/petalinux/config.patch
 petalinux-config --silentconfig
 
 # Initialize the default root filesystem configuration

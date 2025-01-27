@@ -40,6 +40,13 @@ if [ ! -d "projects/${PRJ}" ]; then
     exit 1
 fi
 
+# Check that the board cfg directory (and petalinux directory) exists
+if [ ! -d "projects/${PRJ}/cfg/${BRD}/petalinux" ]; then
+    echo "[PTLNX CFG SCRIPT] ERROR:"
+    echo "Board PetaLinux configuration directory not found: projects/${PRJ}/cfg/${BRD}/petalinux"
+    exit 1
+fi
+
 # Check that the project configuration patch does not already exist if not updating
 if [ -f "projects/${PRJ}/cfg/${BRD}/petalinux/config.patch" ] && [ $UPDATE -ne 1 ]; then
     echo "[PTLNX CFG SCRIPT] ERROR:"

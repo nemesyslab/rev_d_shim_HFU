@@ -1,3 +1,8 @@
+OUT OF DATE
+
+
+
+
 # Example AXI Hub Ports
 
 Ths project demonstrates the full use of the AXI hub, utilizing the CFG/STS registers and both AXI-Stream and BRAM ports. The AXI hub can support either a BRAM or AXI-Stream interface on each port, where the AXI-Stream can include the Manager, Subordinate, or both. The project instantiates a AXI-Stream FIFO loopback on port 0. The FIFO takes input from the hub port 0 AXI-S Manager, and outputs to the hub port 0 AXI-S Subordinate, allowing read and write on port 0. The project then includes a BRAM interface on port 1 with both read and write access.

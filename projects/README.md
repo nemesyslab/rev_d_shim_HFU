@@ -42,5 +42,7 @@ The main definition of the PL functionality is done in `block_design.tcl`. This 
 
 ## PetaLinux Processing System (PS) Configuration
 
-The PetaLinux configuration files in `cfg/[board_name]/petalinux/` are patches to the default PetaLinux configuration for a given board and hardware definition file (xsa). They can be created with the `configure` scripts in the `scripts/petalinux` directory (see comments in those files for more info). The `config.patch` file is a patch file for the PetaLinux project configuration, and the `rootfs_config.patch` file is a patch file for the PetaLinux filesystem configuration.
+The PetaLinux configuration files in `cfg/[board_name]/petalinux/` are patches to the default PetaLinux configuration for a given board and hardware definition file (xsa). They can be created with the `config` scripts in the `scripts/petalinux` directory (see comments in those files for more info). The `config.patch` file is a patch file for the PetaLinux project configuration, and the `rootfs_config.patch` file is a patch file for the PetaLinux filesystem configuration.
+
+You may need to reconfigure PetaLinux projects if you're using a different version of PetaLinux. You can look at the patch files present in the `cfg/[board_name]/petalinux/` directory to see what changes are being made to the default configuration and reapply them manually with the `config` scripts `scripts/petalinux/config_project.sh` and `scripts/petalinux/config_rootfs.sh`.
 

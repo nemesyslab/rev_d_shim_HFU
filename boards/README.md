@@ -23,9 +23,11 @@ To add a new board, you should have all the files except for `board_config.json`
 {
     "part": "[FPGA part, e.g. xc7z020clg400-1]",
     "proc": "[Processor part, e.g. ps7_cortexa9_0]",
-    "board_part": "[distributor.domain:name:part0:1.0, e.g. redpitaya.com:sdrlab_122_16:part0:1.0]"
+    "board_part": "[vendor:name:part0:version, e.g. redpitaya.com:sdrlab_122_16:part0:1.0]"
 }
 ```
+
+You can find the necessary vendor, name, and version information in the `board.xml` file (under the `board` and `file_version` attributes). These need to match, or the board will not be recognized by Vivado.
 
 To use a board for a project, you'll need to add its compatibility to the project's `cfg` directory. This will require creating a directory with the board's name, containing the necessary board-specific XDC files constraining the project's ports (which are defined in `ports.tcl`) and PetaLinux configuration for the processing system. See the README in the `projects/` directory for more information.
 

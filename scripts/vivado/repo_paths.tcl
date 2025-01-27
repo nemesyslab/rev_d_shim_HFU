@@ -15,4 +15,4 @@
 # - [Developer choice] Overall Vivado (`~/.Xilinx/Vivado/Vivado_init.tcl`)
 
 set rev_d_dir $::env(REV_D_DIR)
-set_param board.repoPaths [glob -type d ${rev_d_dir}/boards/*/board_files/1.0/]
+set_param board.repoPaths [glob -type d ${rev_d_dir}/boards/*/board_files/*/]

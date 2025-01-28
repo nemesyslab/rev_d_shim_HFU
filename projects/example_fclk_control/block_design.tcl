@@ -4,9 +4,10 @@
 # Config:
 # - Disable AXI ACP interface
 # - Disable M_AXI_GP0 interface
-# No connections
+# Connect the FCLK to an external port
 init_ps ps_0 {
   PCW_USE_S_AXI_ACP 0
   PCW_USE_M_AXI_GP0 0
 } {
+  FCLK_CLK0 fclk0
 }

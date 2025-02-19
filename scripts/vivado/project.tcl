@@ -51,7 +51,7 @@ update_ip_catalog
 ################################################################################
 
 # Procedure for connecting (wiring) two pins together
-# Can handle both regular and interface pins. 
+# Can handle both regular and interface pins.
 # Attempts to wire normal pins, then interface pins.
 proc wire {name1 name2} {
   set pin1 [get_bd_pins $name1]
@@ -91,24 +91,24 @@ proc cell {cell_vlnv cell_name {cell_props {}} {cell_conn {}}} {
 }
 
 # Procedure for initializing the processing system
-# Initialize the processing system from the preset defined in 
+# Initialize the processing system from the preset defined in
 # boards/[board]/board_files/1.0/preset.xml
 # then overwrites some properties with those in ps_props
 #  ps_name: name of the processing system
 #  ps_props: dictionary of properties to set
 #  ps_conn: dictionary of pins to wire (local_name / remote_name)
 proc init_ps {ps_name {ps_props {}} {ps_conn {}}} {
-  
+
   # Create the PS
   cell xilinx.com:ip:processing_system7:5.5 $ps_name {} {}
-  
+
   # Apply the automation configuration
   # - apply_board_preset applies the preset configuration in boards/[board]/board_files/1.0/preset.xml
   # - make_external externalizes the pins
   # - Master/Slave control the cross-triggering feature (In/Out, not needed for any projects right now)
   set cfg_list [list apply_board_preset 1 make_external {FIXED_IO, DDR} Master Disable Slave Disable]
   apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 -config $cfg_list [get_bd_cells $ps_name]
-  
+
   # Set post-automation properties
   set prop_list {}
   foreach {prop_name prop_value} [uplevel 1 [list subst $ps_props]] {
@@ -148,6 +148,19 @@ proc addr {offset range intf_pin} {
   set object [get_bd_intf_pins $intf_pin]
   set segment [get_bd_addr_segs -of_objects $object]
   assign_bd_address -offset $offset -range $range $segment
+}
+
+# Automate the creation of an AXI interconnect. This creates an intermediary AXI core.
+#  offset: offset of the address
+#  range: range of the address
+#  intf_pin: name of the interface pin to connect to the AXI interconnect
+#  master: name of the master to connect to the AXI interconnect
+#   Note: "master" needs to be an absolute path with a "/" prefix, "intf_pin" does not
+proc auto_connect_axi {offset range intf_pin master} {
+  set object [get_bd_intf_pins $intf_pin]
+  set config [list Master $master Clk Auto]
+  apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config $config $object
+  addr $offset $range $intf_pin
 }
 
 ##############################################################################

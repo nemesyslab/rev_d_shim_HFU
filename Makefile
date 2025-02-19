@@ -59,7 +59,9 @@ export PROC=$(shell jq -r '.proc' boards/$(BOARD)/board_config.json)
 
 # Get the list of necessary cores from the project file to avoid building unnecessary cores
 PROJECT_CORES = $(shell ./scripts/make/get_cores_from_tcl.sh projects/$(PROJECT)/block_design.tcl)
+BOARD_XDC = $(wildcard projects/$(PROJECT)/cfg/$(BOARD)/xdc/*.xdc)
 $(info Project cores: $(PROJECT_CORES))
+$(info XDC files found: $(BOARD_XDC))
 
 endif # Clean check
 
@@ -84,13 +86,18 @@ RM = rm -rf
 # Default target
 all: sd
 
-# Remove the intermediate and temporary files
+# Remove a single project's intermediate and temporary files
+clean_project:
+	@./scripts/make/status.sh "CLEANING PROJECT: $(BOARD)/$(PROJECT)"
+	$(RM) tmp/$(BOARD)/$(PROJECT)
+
+# Remove all the intermediate and temporary files
 clean:
 	@./scripts/make/status.sh "CLEANING"
 	$(RM) .Xil
 	$(RM) tmp
 
-# Remove the output files too
+# Remove all the output files too
 cleanall: clean
 	@./scripts/make/status.sh "CLEANING OUTPUT FILES"
 	$(RM) out
@@ -148,8 +155,8 @@ boot: tmp/$(BOARD)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
 
 # All the cores necessary for the project
 # Separated in `tmp/cores` by vendor
-# The necessary cores for the specific project are extracted  
-# 	from `block_design.tcl` (recursively by sub-modules)  
+# The necessary cores for the specific project are extracted
+# 	from `block_design.tcl` (recursively by sub-modules)
 #		by `scripts/make/get_cores_from_tcl.sh`
 cores: $(addprefix tmp/cores/, $(PROJECT_CORES))
 
@@ -180,7 +187,7 @@ tmp/cores/%: cores/%.v
 # Requires all the cores
 # Built using the `scripts/vivado/project.tcl` script, which uses
 # 	the block design and ports files from the project
-tmp/$(BOARD)/$(PROJECT)/project.xpr: projects/$(PROJECT) $(addprefix tmp/cores/, $(PROJECT_CORES))
+tmp/$(BOARD)/$(PROJECT)/project.xpr: projects/$(PROJECT)/block_design.tcl projects/$(PROJECT)/ports.tcl $(BOARD_XDC) $(addprefix tmp/cores/, $(PROJECT_CORES))
 	@./scripts/make/status.sh "MAKING PROJECT: $(BOARD)/$(PROJECT)/project.xpr"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/vivado/project.tcl -tclargs $(BOARD) $(PROJECT)

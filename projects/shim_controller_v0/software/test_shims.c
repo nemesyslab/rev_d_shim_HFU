@@ -58,8 +58,8 @@ int main(int argc, char *argv[])
     *shim_memory, \
     *trigger_ctrl, *tc_trigger_count, *trigger_lockout_ptr, *trigger_polarity, *trigger_enable;
   
-  if (!(argc == 5) && !(argc == 6)) {
-    fprintf(stderr, "Usage: %s <trigger lockout (ms)> <fclk_divider_0> <fclk_divider_1> <inputfile> [board_to_log]\n", argv[0]);
+  if (!(argc == 6) && !(argc == 7)) {
+    fprintf(stderr, "Usage: %s <trigger lockout (ms)> <fclk_divider_0> <fclk_divider_1> <inputfile> <dac_refresh_divider> [board_to_log]\n", argv[0]);
     exit(-1);
   }
 
@@ -71,15 +71,21 @@ int main(int argc, char *argv[])
     fprintf(stderr, "Usage: %s <trigger lockout (ms)> <fclk_divider_0> <fclk_divider_1> <inputfile> [board_to_log]\n", argv[0]);
     exit(-1);
   }
-
   int board_to_log = 0;
-  if (argc == 6) {
-    board_to_log = atoi(argv[5]);
+  if (argc == 7) {
+    board_to_log = atoi(argv[6]);
     if (board_to_log < 0 || board_to_log > 3) {
       fprintf(stderr, "Board to log must be 0, 1, 2, or 3\n");
-      fprintf(stderr, "Usage: %s <trigger lockout (ms)> <fclk_divider_0> <fclk_divider_1> <inputfile> [board_to_log]\n", argv[0]);
+      fprintf(stderr, "Usage: %s <trigger lockout (ms)> <fclk_divider_0> <fclk_divider_1> <inputfile> <dac_refresh_divider> [board_to_log]\n", argv[0]);
       exit(-1);
     }
+  }
+
+  int user_dac_divider = atoi(argv[5]);
+  if (user_dac_divider <= 500) {
+    fprintf(stderr, "DAC refresh divider must be a positive integer of at least 500\n");
+    fprintf(stderr, "Usage: %s <trigger lockout (ms)> <fclk_divider_0> <fclk_divider_1> <inputfile> <dac_refresh_divider> [board_to_log]\n", argv[0]);
+    exit(-1);
   }
 
   //// Read the input file
@@ -308,8 +314,8 @@ int main(int argc, char *argv[])
   // set the DAC to external SPI clock, not fully working, so set it to 0x0 (enable is 0x1)
   *dac_control_register = 0x0;
 
-  // set to 50 KHz (50 MHz / 1000)
-  *dac_refresh_divider = 1000;
+  // Clock cycles per DAC sample
+  *dac_refresh_divider = user_dac_divider;
   
   // enable the DAC
   *dac_enable = 0x1;

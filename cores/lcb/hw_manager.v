@@ -270,7 +270,7 @@ module hw_manager #(
           end else begin
             timer <= timer + 1;
           end
-        end
+        end // STOPPING
 
         // Wait in the halted state until the system enable goes low
         HALTED: begin
@@ -279,9 +279,10 @@ module hw_manager #(
             status_code <= STATUS_OK;
             prev_sys_en <= 0;
           end
-        end
-      endcase
-    end
-  end
+        end // HALTED
+
+      endcase // case (state)
+    end // if (rst) else
+  end // always @(posedge clk or posedge rst)
 
 endmodule

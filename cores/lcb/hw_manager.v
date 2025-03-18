@@ -19,11 +19,18 @@ module hw_manager #(
   input   wire          shutdown_sense, // Shutdown sense
   input   wire  [ 2:0]  sense_num,      // Shutdown sense number
   input   wire  [ 7:0]  over_thresh,    // Over threshold (per board)
-  input   wire  [ 7:0]  dac_empty_read, // DAC empty read (per board)
-  input   wire  [ 7:0]  adc_full_write, // ADC full write (per board)
+  input   wire  [ 7:0]  dac_buf_underflow, // DAC buffer underflow (per board)
+  input   wire  [ 7:0]  dac_buf_overflow,  // DAC buffer overflow (per board)
+  input   wire  [ 7:0]  adc_buf_underflow, // ADC buffer underflow (per board)
+  input   wire  [ 7:0]  adc_buf_overflow,  // ADC buffer overflow (per board)
   input   wire  [ 7:0]  premat_trig,    // Premature trigger (per board)
   input   wire  [ 7:0]  premat_dac_div, // Premature DAC division (per board)
   input   wire  [ 7:0]  premat_adc_div, // Premature ADC division (per board)
+  input   wire  [ 7:0]  dac_thresh_underflow, // DAC threshold core FIFO underflow (per board)
+  input   wire  [ 7:0]  dac_thresh_overflow, // DAC threshold core FIFO overflow (per board)
+  input   wire  [ 7:0]  adc_thresh_underflow, // ADC threshold core FIFO underflow (per board)
+  input   wire  [ 7:0]  adc_thresh_overflow, // ADC threshold core FIFO overflow (per board)
+
 
   // Outputs
   output  reg           sys_rst,        // System reset
@@ -54,18 +61,24 @@ module hw_manager #(
               HALTED    = 4'd6;
 
   // Status codes
-  localparam  STATUS_OK                   = 25'h1,
-              STATUS_PS_SHUTDOWN          = 25'h2,
-              STATUS_DAC_BUF_FILL_TIMEOUT = 25'h3,
-              STATUS_SPI_START_TIMEOUT    = 25'h4,
-              STATUS_OVER_THRESH          = 25'h5,
-              STATUS_SHUTDOWN_SENSE       = 25'h6,
-              STATUS_EXT_SHUTDOWN         = 25'h7,
-              STATUS_DAC_EMPTY_READ       = 25'h8,
-              STATUS_ADC_FULL_WRITE       = 25'h9,
-              STATUS_PREMAT_TRIG          = 25'hA,
-              STATUS_PREMAT_DAC_DIV       = 25'hB,
-              STATUS_PREMAT_ADC_DIV       = 25'hC;
+  localparam  STATUS_OK                   = 25'd1,
+              STATUS_PS_SHUTDOWN          = 25'd2,
+              STATUS_DAC_BUF_FILL_TIMEOUT = 25'd3,
+              STATUS_SPI_START_TIMEOUT    = 25'd4,
+              STATUS_OVER_THRESH          = 25'd5,
+              STATUS_SHUTDOWN_SENSE       = 25'd6,
+              STATUS_EXT_SHUTDOWN         = 25'd7,
+              STATUS_DAC_BUF_UNDERFLOW    = 25'd8,
+              STATUS_DAC_BUF_OVERFLOW     = 25'd9,
+              STATUS_ADC_BUF_UNDERFLOW    = 25'd10,
+              STATUS_ADC_BUF_OVERFLOW     = 25'd11,
+              STATUS_PREMAT_TRIG          = 25'd12,
+              STATUS_PREMAT_DAC_DIV       = 25'd13,
+              STATUS_PREMAT_ADC_DIV       = 25'd14,
+              STATUS_DAC_THRESH_UNDERFLOW = 25'd15,
+              STATUS_DAC_THRESH_OVERFLOW  = 25'd16,
+              STATUS_ADC_THRESH_UNDERFLOW = 25'd17,
+              STATUS_ADC_THRESH_OVERFLOW  = 25'd18;
 
   // Main state machine
   always @(posedge clk or posedge rst) begin
@@ -160,8 +173,23 @@ module hw_manager #(
             ps_interrupt <= 0;
           end // if (ps_interrupt)
 
-          // Check for various error conditions or shutdowns
-          if (!sys_en || over_thresh || shutdown_sense || ext_shutdown || dac_empty_read || adc_full_write || premat_trig || premat_dac_div || premat_adc_div) begin
+          // Error/halt state check
+          if (!sys_en 
+              || over_thresh 
+              || shutdown_sense 
+              || ext_shutdown 
+              || dac_buf_underflow 
+              || dac_buf_overflow 
+              || adc_buf_overflow 
+              || adc_buf_underflow 
+              || premat_trig 
+              || premat_dac_div 
+              || premat_adc_div
+              || dac_thresh_overflow
+              || adc_thresh_overflow
+              || dac_thresh_underflow
+              || adc_thresh_underflow
+              ) begin
             // Set the status code and halt the system
             state <= HALTED;
             timer <= 0;
@@ -178,13 +206,7 @@ module hw_manager #(
             // Integrator core over threshold
             else if (over_thresh) begin
               status_code <= STATUS_OVER_THRESH;
-              board_num <=  over_thresh[0] ? 3'd0 :
-                over_thresh[1] ? 3'd1 :
-                over_thresh[2] ? 3'd2 :
-                over_thresh[3] ? 3'd3 :
-                over_thresh[4] ? 3'd4 :
-                over_thresh[5] ? 3'd5 :
-                over_thresh[6] ? 3'd6 : 3'd7;
+              board_num <= extract_board_num(over_thresh);
             end // if (over_thresh)
 
             // Hardware shutdown sense core detected a shutdown
@@ -196,67 +218,73 @@ module hw_manager #(
             // External shutdown
             else if (ext_shutdown) status_code <= STATUS_EXT_SHUTDOWN;
 
-            // DAC read attempt from empty buffer
-            else if (dac_empty_read) begin
-              status_code <= STATUS_DAC_EMPTY_READ;
-              board_num <=  dac_empty_read[0] ? 3'd0 :
-                    dac_empty_read[1] ? 3'd1 :
-                    dac_empty_read[2] ? 3'd2 :
-                    dac_empty_read[3] ? 3'd3 :
-                    dac_empty_read[4] ? 3'd4 :
-                    dac_empty_read[5] ? 3'd5 :
-                    dac_empty_read[6] ? 3'd6 : 3'd7;
-            end // if (dac_empty_read)
+            // DAC buffer underflow
+            else if (dac_buf_underflow) begin
+              status_code <= STATUS_DAC_BUF_UNDERFLOW;
+              board_num <= extract_board_num(dac_buf_underflow);
+            end // if (dac_buf_underflow)
 
-            // ADC write attempt to full buffer
-            else if (adc_full_write) begin
-              status_code <= STATUS_ADC_FULL_WRITE;
-              board_num <=  adc_full_write[0] ? 3'd0 :
-                    adc_full_write[1] ? 3'd1 :
-                    adc_full_write[2] ? 3'd2 :
-                    adc_full_write[3] ? 3'd3 :
-                    adc_full_write[4] ? 3'd4 :
-                    adc_full_write[5] ? 3'd5 :
-                    adc_full_write[6] ? 3'd6 : 3'd7;
-            end // if (adc_full_write)
+            // DAC buffer overflow
+            else if (dac_buf_overflow) begin
+              status_code <= STATUS_DAC_BUF_OVERFLOW;
+              board_num <= extract_board_num(dac_buf_overflow);
+            end // if (dac_buf_overflow)
+
+            // ADC buffer underflow
+            else if (adc_buf_underflow) begin
+              status_code <= STATUS_ADC_BUF_UNDERFLOW;
+              board_num <= extract_board_num(adc_buf_underflow);
+            end // if (adc_buf_underflow)
+
+            // ADC buffer overflow
+            else if (adc_buf_overflow) begin
+              status_code <= STATUS_ADC_BUF_OVERFLOW;
+              board_num <= extract_board_num(adc_buf_overflow);
+            end // if (adc_buf_overflow)
 
             // Premature trigger (trigger occurred before the DAC was pre-loaded and ready)
             else if (premat_trig) begin
               status_code <= STATUS_PREMAT_TRIG;
-              board_num <=  premat_trig[0] ? 3'd0 :
-                    premat_trig[1] ? 3'd1 :
-                    premat_trig[2] ? 3'd2 :
-                    premat_trig[3] ? 3'd3 :
-                    premat_trig[4] ? 3'd4 :
-                    premat_trig[5] ? 3'd5 :
-                    premat_trig[6] ? 3'd6 : 3'd7;
+              board_num <= extract_board_num(premat_trig);
             end // if (premat_trig)
 
             // Premature DAC divider (DAC transfer took longer than the DAC divider)
             else if (premat_dac_div) begin
               status_code <= STATUS_PREMAT_DAC_DIV;
-              board_num <=  premat_dac_div[0] ? 3'd0 :
-                    premat_dac_div[1] ? 3'd1 :
-                    premat_dac_div[2] ? 3'd2 :
-                    premat_dac_div[3] ? 3'd3 :
-                    premat_dac_div[4] ? 3'd4 :
-                    premat_dac_div[5] ? 3'd5 :
-                    premat_dac_div[6] ? 3'd6 : 3'd7;
+              board_num <= extract_board_num(premat_dac_div);
             end // if (premat_dac_div)
 
             // Premature ADC division (ADC transfer took longer than the ADC divider)
             else if (premat_adc_div) begin
               status_code <= STATUS_PREMAT_ADC_DIV;
-              board_num <=  premat_adc_div[0] ? 3'd0 :
-                    premat_adc_div[1] ? 3'd1 :
-                    premat_adc_div[2] ? 3'd2 :
-                    premat_adc_div[3] ? 3'd3 :
-                    premat_adc_div[4] ? 3'd4 :
-                    premat_adc_div[5] ? 3'd5 :
-                    premat_adc_div[6] ? 3'd6 : 3'd7;
+              board_num <= extract_board_num(premat_adc_div);
             end // if (premat_adc_div)
 
-          end // if (!sys_en || over_thresh || shutdown_sense || ext_shutdown || dac_empty_read || adc_full_write || premat_trig || premat_dac_div || premat_adc_div)
+            // DAC threshold core FIFO underflow
+            else if (dac_thresh_underflow) begin
+              status_code <= STATUS_DAC_THRESH_UNDERFLOW;
+              board_num <= extract_board_num(dac_thresh_underflow);
+            end // if (dac_thresh_underflow)
+
+            // DAC threshold core FIFO overflow
+            else if (dac_thresh_overflow) begin
+              status_code <= STATUS_DAC_THRESH_OVERFLOW;
+              board_num <= extract_board_num(dac_thresh_overflow);
+            end // if (dac_thresh_overflow)
+
+            // ADC threshold core FIFO underflow
+            else if (adc_thresh_underflow) begin
+              status_code <= STATUS_ADC_THRESH_UNDERFLOW;
+              board_num <= extract_board_num(adc_thresh_underflow);
+            end // if (adc_thresh_underflow)
+
+            // ADC threshold core FIFO overflow
+            else if (adc_thresh_overflow) begin
+              status_code <= STATUS_ADC_THRESH_OVERFLOW;
+              board_num <= extract_board_num(adc_thresh_overflow);
+            end // if (adc_thresh_overflow)
+
+          end // Error/halt state check
         end // RUNNING
 
         // Wait in the halted state until the system enable goes low
@@ -276,5 +304,23 @@ module hw_manager #(
       endcase // case (state)
     end // if (rst) else
   end // always @(posedge clk or posedge rst)
+
+  // Function to extract the board number from an 8-bit signal
+  function [2:0] extract_board_num;
+    input [7:0] signal;
+    begin
+      case (1'b1)
+        signal[0]: extract_board_num = 3'd0;
+        signal[1]: extract_board_num = 3'd1;
+        signal[2]: extract_board_num = 3'd2;
+        signal[3]: extract_board_num = 3'd3;
+        signal[4]: extract_board_num = 3'd4;
+        signal[5]: extract_board_num = 3'd5;
+        signal[6]: extract_board_num = 3'd6;
+        signal[7]: extract_board_num = 3'd7;
+        default: extract_board_num = 3'd0;
+      endcase
+    end
+  endfunction
 
 endmodule

@@ -1,85 +1,147 @@
 `timescale 1 ns / 1 ps
 
 module threshold_integrator (
-  input   wire        clk                    ,
-  input   wire        reset                  ,
-  input   wire        enable                 ,
-  input   wire [31:0] window                 ,
-  input   wire [14:0] threshold_average      ,
-  input   wire        dac_done               ,
-  input   wire [15:0] value_in          [7:0],
-  input   wire        value_ready       [7:0],
-  output  reg         over_threshold         ,
+  // Inputs
+  input   wire         clk               ,
+  input   wire         rst               ,
+  input   wire         enable            ,
+  input   wire [ 31:0] window            ,
+  input   wire [ 14:0] threshold_average ,
+  input   wire         dac_done          ,
+  input   wire [127:0] value_in_concat   ,
+  input   wire [  7:0] value_ready_concat,
+
+  // Outputs
+  output  reg         err_overflow  ,
+  output  reg         err_underflow ,
+  output  reg         over_threshold,
   output  reg         setup_done
 );
 
   // Internal signals
-  reg signed [47:0] min_value                              ;
-  reg signed [47:0] max_value                              ;
-  reg        [ 4:0] chunk_size                             ;
-  reg        [ 4:0] sample_size                            ;
-  reg        [19:0] sample_timer_max                       ;
-  reg        [ 2:0] sub_average_size                       ;
-  reg        [ 4:0] inflow_sub_average_timer               ;
-  reg        [19:0] inflow_sample_timer                    ;
-  reg        [24:0] outflow_sample_timer                   ;
-  reg signed [15:0] inflow_value               [ 7:0]      ;
-  reg signed [21:0] sub_average_sum            [ 7:0]      ; // 
-  reg signed [35:0] inflow_sample_sum          [ 7:0]      ;
-  reg        [ 3:0] fifo_in_queue_count                    ;
-  reg signed [35:0] queued_fifo_in_sample_sum  [ 7:0]      ;
-  reg        [ 3:0] fifo_out_queue_count                   ;
-  reg signed [35:0] queued_fifo_out_sample_sum [ 7:0]      ;
-  reg signed [15:0] outflow_value              [ 7:0]      ;
-  reg signed [19:0] outflow_remainder          [ 7:0]      ;
-  reg signed [20:0] running_total_delta        [ 7:0]      ;
-  reg signed [47:0] running_total_sum          [ 7:0]      ;
-  reg        [ 2:0] state                                  ;
+  wire[15:0] value_in   [7:0];
+  wire       value_ready[7:0];
+  reg [47:0] max_value               ;
+  reg [ 4:0] chunk_size              ;
+  reg [24:0] chunk_mask              ;
+  reg [ 4:0] sample_size             ;
+  reg [19:0] sample_mask             ;
+  reg [ 2:0] sub_average_size        ;
+  reg [ 4:0] sub_average_mask        ;
+  reg [ 4:0] inflow_sub_average_timer;
+  reg [19:0] inflow_sample_timer     ;
+  reg [24:0] outflow_timer           ;
+  reg [ 3:0] fifo_in_queue_count     ;
+  reg [35:0] fifo_din                ;
+  wire       wr_en                   ;
+  wire       overflow                ;
+  reg [ 3:0] fifo_out_queue_count    ;
+  wire[35:0] fifo_dout               ;
+  wire       rd_en                   ;
+  wire       underflow               ;
+  reg [ 2:0] state                   ;
+  reg [15:0] inflow_value               [ 7:0];
+  reg [21:0] sub_average_sum            [ 7:0];
+  reg [35:0] inflow_sample_sum          [ 7:0];
+  reg [35:0] queued_fifo_in_sample_sum  [ 7:0];
+  reg [35:0] queued_fifo_out_sample_sum [ 7:0];
+  reg [15:0] outflow_value              [ 7:0];
+  reg [19:0] outflow_remainder          [ 7:0];
+  reg signed [17:0] sum_delta   [ 7:0];
+  reg signed [48:0] total_sum   [ 7:0];
 
   // State encoding
   localparam  IDLE          = 3'd0,
               SETUP         = 3'd1,
-              WAIT          = 3'd2, 
+              WAIT          = 3'd2,
               RUNNING       = 3'd3,
-              OUT_OF_BOUNDS = 3'd4;
+              OUT_OF_BOUNDS = 3'd4,
+              ERROR         = 3'd5;
 
-  // Main logic
-  always @(posedge clk or posedge reset) begin
+  //// FIFO instantiation
+  // xpm_fifo_sync: Synchronous FIFO
+  // Xilinx Parameterized Macro, version 2024.1
+  xpm_fifo_sync #(
+    .FIFO_MEMORY_TYPE("block"),    // String
+    .FIFO_READ_LATENCY(0),         // DECIMAL
+    .FIFO_WRITE_DEPTH(1024),       // DECIMAL
+    .RD_DATA_COUNT_WIDTH(11),      // DECIMAL
+    .READ_DATA_WIDTH(36),          // DECIMAL
+    .READ_MODE("fwft"),            // String
+    .USE_ADV_FEATURES("0101"),     // Enable: overflow, underflow
+    .WRITE_DATA_WIDTH(36),         // DECIMAL
+    .WR_DATA_COUNT_WIDTH(11)       // DECIMAL
+  )
+  xpm_fifo_sync_inst (
+    .dout(fifo_dout),              // READ_DATA_WIDTH-bit output: Read Data: The output data bus is driven
+                                    // when reading the FIFO.
+    .overflow(overflow),           // 1-bit output: Overflow: This signal indicates that a write request
+                                    // (wren) during the prior clock cycle was rejected, because the FIFO is
+                                    // full. Overflowing the FIFO is not destructive to the contents of the
+                                    // FIFO.
+    .underflow(underflow),         // 1-bit output: Underflow: Indicates that the read request (rd_en) during
+                                    // the previous clock cycle was rejected because the FIFO is empty. Under
+                                    // flowing the FIFO is not destructive to the FIFO.
+    .din(fifo_din),                // WRITE_DATA_WIDTH-bit input: Write Data: The input data bus used when
+                                    // writing the FIFO.
+    .rd_en(rd_en),                 // 1-bit input: Read Enable: If the FIFO is not empty, asserting this
+                                    // signal causes data (on dout) to be read from the FIFO. Must be held
+                                    // active-low when rd_rst_busy is active high.
+    .rst(rst),                     // 1-bit input: Reset: Must be synchronous to wr_clk. The clock(s) can be
+                                    // unstable at the time of applying reset, but reset must be released only
+                                    // after the clock(s) is/are stable.
+    .wr_clk(clk),                  // 1-bit input: Write clock: Used for write operation. wr_clk must be a
+                                    // free running clock.
+    .wr_en(wr_en)                  // 1-bit input: Write Enable: If the FIFO is not full, asserting this
+                                    // signal causes data (on din) to be written to the FIFO Must be held
+                                    // active-low when rst or wr_rst_busy or rd_rst_busy is active high
+  );
+  // End of xpm_fifo_sync_inst instantiation
+
+  // FIFO I/O
+  always @* begin
+    if (fifo_in_queue_count != 0) begin
+      fifo_din = queued_fifo_in_sample_sum[fifo_in_queue_count - 1];
+    end else begin
+      fifo_din = 36'b0;
+    end
+  end
+  assign wr_en = (fifo_in_queue_count != 0);
+  assign rd_en = (fifo_out_queue_count != 0);
+
+  // Global logic
+  always @(posedge clk or posedge rst) begin
     // Reset logic
-    if (reset) begin
+    if (rst) begin
       // Zero all internal signals
-      min_value <= 0;
       max_value <= 0;
       chunk_size <= 0;
+      chunk_mask <= 0;
       sample_size <= 0;
-      sample_timer_max <= 0;
+      sample_mask <= 0;
       sub_average_size <= 0;
+      sub_average_mask <= 0;
       inflow_sub_average_timer <= 0;
       inflow_sample_timer <= 0;
-      outflow_sample_timer <= 0;
+      outflow_timer <= 0;
       fifo_in_queue_count <= 0;
       fifo_out_queue_count <= 0;
+
+      // Zero all output signals
       over_threshold <= 0;
+      err_overflow <= 0;
+      err_underflow <= 0;
       setup_done <= 0;
+
+      // Set initial state
       state <= IDLE;
-      for (int i = 0; i < 8; i = i + 1) begin
-        inflow_value[i] <= 0;
-        sub_average_sum[i] <= 0;
-        inflow_sample_sum[i] <= 0;
-        queued_fifo_in_sample_sum[i] <= 0;
-        queued_fifo_out_sample_sum[i] <= 0;
-        outflow_value[i] <= 0;
-        outflow_remainder[i] <= 0;
-        running_total_delta[i] <= 0;
-        running_total_sum[i] <= 0;
-      end
     end else begin
       case (state)
 
         // IDLE state, waiting for enable signal
         IDLE: begin
           if (enable) begin
-            // Calculate chunk_size
+            // Calculate chunk_size (MSB of window - 6)
             if (window[31]) begin
               chunk_size <= 25;
             end else if (window[30]) begin
@@ -128,7 +190,6 @@ module threshold_integrator (
             end
 
             // Calculate min/max values
-            min_value <= -threshold_average * window;
             max_value <= threshold_average * window;
 
             state <= SETUP;
@@ -145,10 +206,14 @@ module threshold_integrator (
         // WAIT state, waiting for DAC to be ready
         WAIT: begin
           if (dac_done) begin
+            // Calculate masks
+            chunk_mask <= (1 << chunk_size) - 1;
+            sample_mask <= (1 << sample_size) - 1;
+            sub_average_mask <= (1 << sub_average_size) - 1;
+            // Initialize timers
             inflow_sub_average_timer <= (1 << sub_average_size) - 1;
-            sample_timer_max <= (1 << sample_size) - 1;
             inflow_sample_timer <= (1 << sample_size) - 1;
-            outflow_sample_timer <= window;
+            outflow_timer <= window - 1;
             setup_done <= 1;
             state <= RUNNING;
           end
@@ -157,106 +222,123 @@ module threshold_integrator (
         // RUNNING state, main logic
         RUNNING: begin
 
+          // Error logic
+          if (overflow) begin
+            err_overflow <= 1;
+            state <= ERROR;
+          end
+          if (underflow) begin
+            err_underflow <= 1;
+            state <= ERROR;
+          end
+
           // Inflow timers
           if (inflow_sub_average_timer != 0) begin // Sub-average timer
             inflow_sub_average_timer <= inflow_sub_average_timer - 1;
           end else begin
-            inflow_sub_average_timer <= (1 << sub_average_size) - 1;
+            inflow_sub_average_timer <= sub_average_mask;
             if (inflow_sample_timer != 0) begin // Sample timer
               inflow_sample_timer <= inflow_sample_timer - 1;
             end else begin
-              inflow_sample_timer <= (1 << sample_size) - 1;
+              inflow_sample_timer <= sample_mask;
               fifo_in_queue_count <= 8;
             end
           end // Inflow timers
 
-          // Inflow channel logic
-          for (int i = 0; i < 8; i = i + 1) begin
-            // Move new values external values in when valid
-            if (value_ready[i]) begin
-              inflow_value[i] <= value_in[i] - 16'h8000; // Convert to signed
-            end
-            // Sub-average logic
-            if (inflow_sub_average_timer != 0) begin
-              sub_average_sum[i] <= sub_average_sum[i] + inflow_value[i];
-            end else begin
-              // Remove the sub-average value from the sub-average sum and add the new inflow value
-              sub_average_sum[i] <= sub_average_sum[i] - ((sub_average_sum[i] >>> sub_average_size) <<< sub_average_size) + inflow_value[i];
-              // Sample sum logic
-              if (inflow_sample_timer != 0) begin // Add to sample sum
-                inflow_sample_sum[i] <= inflow_sample_sum[i] + (sub_average_sum[i] >>> sub_average_size);
-              end else begin // Add to sample sum and move into FIFO queue. Reset sample sum
-                queued_fifo_in_sample_sum[i] <= inflow_sample_sum[i] + (sub_average_sum[i] >>> sub_average_size);
-                inflow_sample_sum[i] <= 0;
-              end
-            end
-          end // Inflow channel logic
-          
-          // Inflow FIFO logic
+          // Inflow FIFO counter
           if (fifo_in_queue_count != 0) begin
-            // TODO: Push to FIFO
+            // FIFO push is done in FIFO I/O always block above
             fifo_in_queue_count <= fifo_in_queue_count - 1;
-          end // Inflow FIFO logic
+          end // Inflow FIFO counter
 
           // Outflow timer
-          if (outflow_sample_timer != 0) begin
-            outflow_sample_timer <= outflow_sample_timer - 1;
-            if (outflow_sample_timer == 16) begin // Initiate FIFO popping to queue
+          if (outflow_timer != 0) begin
+            outflow_timer <= outflow_timer - 1;
+            if (outflow_timer == 16) begin // Initiate FIFO popping to queue
               fifo_out_queue_count <= 8;
             end
           end else begin
-            outflow_sample_timer <= (1 << chunk_size) - 1;
+            outflow_timer <= chunk_mask;
           end // Outflow timer
-
-          // Outflow channel logic
-          for (int i = 0; i < 8; i = i + 1) begin
-            // Move queued samples in to outflow value and remainder
-            if (outflow_sample_timer == 0) begin
-              outflow_value[i] <= queued_fifo_out_sample_sum[i] >>> sample_size;
-              // TODO: This rounds down negative numbers, and should round towards zero
-              outflow_remainder[i] <= (queued_fifo_out_sample_sum[i] - (queued_fifo_out_sample_sum[i] >>> sample_size));
-            end
-          end // Outflow channel logic
 
           // Outflow FIFO logic
           if (fifo_out_queue_count != 0) begin
-            // TODO: Pop from FIFO
+            queued_fifo_out_sample_sum[fifo_out_queue_count - 1] <= fifo_dout;
             fifo_out_queue_count <= fifo_out_queue_count - 1;
           end // Outflow FIFO logic
 
-          // Running total logic
-          for (int i = 0; i < 8; i = i + 1) begin
-            if (outflow_remainder >= 0) begin
-              running_total_delta[i] <= (outflow_timer >= outflow_remainder[i])
-                                      ? inflow_value[i] - outflow_value[i]
-                                      : inflow_value[i] - outflow_value[i] - 1;
-            else
-              running_total_delta[i] <= (outflow_timer >= -outflow_remainder[i])
-                                      ? inflow_value[i] - outflow_value[i]
-                                      : inflow_value[i] - outflow_value[i] + 1;
-            end
-            
-            // Check for over threshold while avoiding overflow
-            if (running_total_delta[i] < min_value || running_total_delta[i] > max_value) begin
-              over_threshold <= 1;
-              state <= OUT_OF_BOUNDS;
-            end else if (running_total_delta[i] < 0 && min_value - running_total_delta[i] > running_total_sum[i]) begin
-              over_threshold <= 1;
-              state <= OUT_OF_BOUNDS;
-            end else if (running_total_delta[i] > 0 && max_value - running_total_delta[i] < running_total_sum[i]) begin
-              over_threshold <= 1;
-              state <= OUT_OF_BOUNDS;
-            end else begin
-              running_total_sum[i] <= running_total_sum[i] + running_total_delta[i];
-            end
-              
-          end // Running total logic
-
         end // RUNNING
+
         OUT_OF_BOUNDS: begin
           // Stop everything until reset
-        end
+        end // OUT_OF_BOUNDS
+
+        ERROR: begin
+          // Stop everything until reset
+        end // ERROR
+
       endcase // state
     end
-  end // always
+  end // Global logic
+
+  // Per-channel logic
+  genvar i;
+  generate // Per-channel logic generate
+    for (i = 0; i < 8; i = i + 1) begin : channel_loop
+      assign value_in[i] = value_in_concat[16 * (i + 1) - 1 -: 16];
+      assign value_ready[i] = value_ready_concat[i];
+
+      always @(posedge clk or posedge rst) begin
+        if (rst) begin : channel_reset
+          inflow_value[i] = 0;
+          sub_average_sum[i] = 0;
+          inflow_sample_sum[i] = 0;
+          queued_fifo_in_sample_sum[i] = 0;
+          queued_fifo_out_sample_sum[i] = 0;
+          outflow_value[i] = 0;
+          outflow_remainder[i] = 0;
+          total_sum[i] = 0;
+          sum_delta[i] = 0;
+        end else if (state == RUNNING) begin : channel_running
+          //// Inflow logic
+          // Move new values external values in when valid
+          if (value_ready[i]) begin
+            inflow_value[i] <= (value_in[i][15]) ? (value_in[i] - 32768) : (32768 - value_in[i]);
+          end
+          // Sub-average logic
+          if (inflow_sub_average_timer != 0) begin
+            sub_average_sum[i] <= sub_average_sum[i] + inflow_value[i];
+          end else begin
+            // Remove the sub-average value from the sub-average sum and add the new inflow value
+            sub_average_sum[i] <= (sub_average_sum[i] & (1 << sub_average_size - 1)) + inflow_value[i];
+            // Sample sum logic
+            if (inflow_sample_timer != 0) begin // Add to sample sum
+              inflow_sample_sum[i] <= inflow_sample_sum[i] + (sub_average_sum[i] >> sub_average_size);
+            end else begin // Add to sample sum and move into FIFO queue. Reset sample sum
+              queued_fifo_in_sample_sum[i] <= inflow_sample_sum[i] + (sub_average_sum[i] >> sub_average_size);
+              inflow_sample_sum[i] <= 0;
+            end
+          end
+
+          //// Outflow logic
+          // Move queued samples in to outflow value and remainder
+          if (outflow_timer == 0) begin
+            outflow_value[i] <= queued_fifo_out_sample_sum[i] >> sample_size;
+            outflow_remainder[i] <= queued_fifo_out_sample_sum[i] & sample_mask;
+          end
+
+          //// Sum logic
+          // Pipeline the delta to the running total
+          sum_delta[i] <= ((outflow_timer & sample_mask) < outflow_remainder[i])
+                  ? $signed({2'b00, inflow_value[i]}) - $signed({2'b00, outflow_value[i]} + 1)
+                  : $signed({2'b00, inflow_value[i]}) - $signed({2'b00, outflow_value[i]});
+          total_sum[i] <= total_sum[i] + sum_delta[i];
+          if (total_sum[i] > max_value) begin
+            over_threshold <= 1;
+            state <= OUT_OF_BOUNDS;
+          end
+        end // RUNNING
+      end // channel_running
+    end // channel_loop
+  endgenerate // Per-channel logic generate
 endmodule

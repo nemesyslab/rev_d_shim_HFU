@@ -5,28 +5,18 @@ module axi_shim_cfg #
   parameter integer AXI_ADDR_WIDTH = 16,
 
   // Trigger lockout (+0)
-  parameter integer TRIGGER_LOCKOUT_MIN = 0,
-  parameter integer TRIGGER_LOCKOUT_MAX = {32{1'b1}},
   parameter integer TRIGGER_LOCKOUT_DEFAULT = 250000, // 1 ms at 250MHz
 
   // Calibration offset (+4)
-  parameter integer CALIBRATION_OFFSET_MIN = -2048,
-  parameter integer CALIBRATION_OFFSET_MAX = 2048,
   parameter integer CALIBRATION_OFFSET_DEFAULT = 0,
 
   // DAC divider (+8)
-  parameter integer DAC_DIVIDER_MIN = 200,
-  parameter integer DAC_DIVIDER_MAX = {16{1'b1}},
   parameter integer DAC_DIVIDER_DEFAULT = 1000,
 
   // Integrator threshold average (+12)
-  parameter integer INTEGRATOR_THRESHOLD_AVERAGE_MIN = 0,
-  parameter integer INTEGRATOR_THRESHOLD_AVERAGE_MAX = {1{1'b1}},
-  parameter integer INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT = 1 << 14,
+  parameter integer INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT = 16384,
   
   // Integrator window (+16)
-  parameter integer INTEGRATOR_WINDOW_MIN = 2048,
-  parameter integer INTEGRATOR_WINDOW_MAX = {32{1'b1}},
   parameter integer INTEGRATOR_WINDOW_DEFAULT = 5000000, // 100 ms at 50MHz
 
   // Integrator enable default
@@ -79,6 +69,44 @@ module axi_shim_cfg #
   function integer clogb2 (input integer value);
     for(clogb2 = 0; value > 0; clogb2 = clogb2 + 1) value = value >> 1;
   endfunction
+
+  // Localparams for MIN/MAX values
+  localparam integer TRIGGER_LOCKOUT_MIN = 0;
+  localparam integer TRIGGER_LOCKOUT_MAX = 4294967295;
+  localparam integer CALIBRATION_OFFSET_MIN = -2048;
+  localparam integer CALIBRATION_OFFSET_MAX = 2048;
+  localparam integer DAC_DIVIDER_MIN = 200;
+  localparam integer DAC_DIVIDER_MAX = 65535;
+  localparam integer INTEGRATOR_THRESHOLD_AVERAGE_MIN = 1;
+  localparam integer INTEGRATOR_THRESHOLD_AVERAGE_MAX = 32767;
+  localparam integer INTEGRATOR_WINDOW_MIN = 2048;
+  localparam integer INTEGRATOR_WINDOW_MAX = 4294967295;
+
+  // Local capped default values
+  localparam integer TRIGGER_LOCKOUT_DEFAULT_CAPPED = 
+    (TRIGGER_LOCKOUT_DEFAULT < TRIGGER_LOCKOUT_MIN) ? TRIGGER_LOCKOUT_MIN :
+    (TRIGGER_LOCKOUT_DEFAULT > TRIGGER_LOCKOUT_MAX) ? TRIGGER_LOCKOUT_MAX :
+    TRIGGER_LOCKOUT_DEFAULT;
+
+  localparam integer CALIBRATION_OFFSET_DEFAULT_CAPPED = 
+    (CALIBRATION_OFFSET_DEFAULT < CALIBRATION_OFFSET_MIN) ? CALIBRATION_OFFSET_MIN :
+    (CALIBRATION_OFFSET_DEFAULT > CALIBRATION_OFFSET_MAX) ? CALIBRATION_OFFSET_MAX :
+    CALIBRATION_OFFSET_DEFAULT;
+
+  localparam integer DAC_DIVIDER_DEFAULT_CAPPED = 
+    (DAC_DIVIDER_DEFAULT < DAC_DIVIDER_MIN) ? DAC_DIVIDER_MIN :
+    (DAC_DIVIDER_DEFAULT > DAC_DIVIDER_MAX) ? DAC_DIVIDER_MAX :
+    DAC_DIVIDER_DEFAULT;
+
+  localparam integer INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT_CAPPED = 
+    (INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT < INTEGRATOR_THRESHOLD_AVERAGE_MIN) ? INTEGRATOR_THRESHOLD_AVERAGE_MIN :
+    (INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT > INTEGRATOR_THRESHOLD_AVERAGE_MAX) ? INTEGRATOR_THRESHOLD_AVERAGE_MAX :
+    INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT;
+
+  localparam integer INTEGRATOR_WINDOW_DEFAULT_CAPPED = 
+    (INTEGRATOR_WINDOW_DEFAULT < INTEGRATOR_WINDOW_MIN) ? INTEGRATOR_WINDOW_MIN :
+    (INTEGRATOR_WINDOW_DEFAULT > INTEGRATOR_WINDOW_MAX) ? INTEGRATOR_WINDOW_MAX :
+    INTEGRATOR_WINDOW_DEFAULT;
 
   localparam integer CFG_DATA_WIDTH = 1024;
   localparam integer AXI_DATA_WIDTH = 32;
@@ -142,11 +170,11 @@ module axi_shim_cfg #
   assign int_initial_data_wire = {
     {(CFG_DATA_WIDTH/32 - 6){32'b0}},
     INTEG_EN_DEFAULT,
-    INTEGRATOR_WINDOW_DEFAULT,
-    INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT,
-    DAC_DIVIDER_DEFAULT,
-    CALIBRATION_OFFSET_DEFAULT,
-    TRIGGER_LOCKOUT_DEFAULT
+    INTEGRATOR_WINDOW_DEFAULT_CAPPED,
+    INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT_CAPPED,
+    DAC_DIVIDER_DEFAULT_CAPPED,
+    CALIBRATION_OFFSET_DEFAULT_CAPPED,
+    TRIGGER_LOCKOUT_DEFAULT_CAPPED
   };
 
   // Out of bounds checks
@@ -169,11 +197,11 @@ module axi_shim_cfg #
       int_rvalid_reg <= 1'b0;
       int_rdata_reg <= {(AXI_DATA_WIDTH){1'b0}};
 
-      trig_lockout <= TRIGGER_LOCKOUT_DEFAULT;
-      cal_offset <= CALIBRATION_OFFSET_DEFAULT;
-      dac_divider <= DAC_DIVIDER_DEFAULT;
-      integ_thresh_avg <= INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT;
-      integ_window <= INTEGRATOR_WINDOW_DEFAULT;
+      trig_lockout <= TRIGGER_LOCKOUT_DEFAULT_CAPPED;
+      cal_offset <= CALIBRATION_OFFSET_DEFAULT_CAPPED;
+      dac_divider <= DAC_DIVIDER_DEFAULT_CAPPED;
+      integ_thresh_avg <= INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT_CAPPED;
+      integ_window <= INTEGRATOR_WINDOW_DEFAULT_CAPPED;
       integ_en <= 0;
 
       locked <= 1'b0;

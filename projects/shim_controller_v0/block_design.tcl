@@ -87,20 +87,14 @@ cell pavel-demin:user:port_slicer n_shutdown_force_slice {
   DIN_WIDTH 64 DIN_FROM 0 DIN_TO 0
 } {
   din cfg_0/cfg_data
+  dout n_Shutdown_Force
 }
 cell pavel-demin:user:port_slicer shutdown_reset_slice {
   DIN_WIDTH 64 DIN_FROM 32 DIN_TO 32
 } {
   din cfg_0/cfg_data
 }
-# Invert both shutdown signals, so the initial 0 in the cfg register means shutdown and no reset
-cell xilinx.com:ip:util_vector_logic n_shutdown_force_inv {
-  C_SIZE 1
-  C_OPERATION not
-} {
-  Op1 n_shutdown_force_slice/dout
-  Res Shutdown_Force
-}
+# Invert just the reset signal, so the initial 0s in the cfg register mean shutdown and no reset
 cell xilinx.com:ip:util_vector_logic shutdown_reset_inv {
   C_SIZE 1
   C_OPERATION not

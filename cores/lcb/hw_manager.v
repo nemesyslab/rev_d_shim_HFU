@@ -2,7 +2,7 @@
 
 module hw_manager #(
   // Delays for the various timeouts, default clock frequency is 250 MHz
-  parameter integer SHUTDOWN_FORCE_DELAY = 2500000,  //  10 ms, Delay after releasing "shutdown_force" before pulsing "n_shutdown_rst"
+  parameter integer SHUTDOWN_FORCE_DELAY = 2500000,  //  10 ms, Delay after releasing "n_shutdown_force" before pulsing "n_shutdown_rst"
   parameter integer SHUTDOWN_RESET_PULSE = 25000,    // 100 us, Pulse width for "n_shutdown_rst"
   parameter integer SHUTDOWN_RESET_DELAY = 25000000, // 100 ms, Delay after pulsing "n_shutdown_rst" before starting the system
   parameter integer BUF_LOAD_WAIT  = 250000000, // Full buffer load from DMA after "dma_en" is set
@@ -28,7 +28,8 @@ module hw_manager #(
   input   wire          shutdown_sense, // Shutdown sense
   input   wire  [ 2:0]  sense_num,      // Shutdown sense number
   // Integrator
-  input   wire  [ 7:0]  over_thresh,    // Over threshold (per board)
+  input   wire  [ 7:0]  dac_over_thresh, // DAC over threshold (per board)
+  input   wire  [ 7:0]  adc_over_thresh, // ADC over threshold (per board)
   input   wire  [ 7:0]  dac_thresh_underflow, // DAC threshold core FIFO underflow (per board)
   input   wire  [ 7:0]  dac_thresh_overflow,  // DAC threshold core FIFO overflow (per board)
   input   wire  [ 7:0]  adc_thresh_underflow, // ADC threshold core FIFO underflow (per board)
@@ -49,7 +50,7 @@ module hw_manager #(
   output  reg           dma_en,         // DMA enable
   output  reg           spi_en,         // SPI subsystem enable
   output  reg           trig_en,        // Trigger enable
-  output  reg           shutdown_force, // Shutdown force
+  output  reg           n_shutdown_force, // Shutdown force (negated)
   output  reg           n_shutdown_rst, // Shutdown reset (negated)
   output  wire  [31:0]  status_word,    // Status - Status word
   output  reg           ps_interrupt    // Interrupt signal
@@ -85,20 +86,21 @@ module hw_manager #(
               STATUS_LOCK_VIOL            = 25'd8,
               STATUS_SHUTDOWN_SENSE       = 25'd9,
               STATUS_EXT_SHUTDOWN         = 25'd10,
-              STATUS_OVER_THRESH          = 25'd11,
-              STATUS_DAC_THRESH_UNDERFLOW = 25'd12,
-              STATUS_DAC_THRESH_OVERFLOW  = 25'd13,
-              STATUS_ADC_THRESH_UNDERFLOW = 25'd14,
-              STATUS_ADC_THRESH_OVERFLOW  = 25'd15,
-              STATUS_DAC_BUF_UNDERFLOW    = 25'd16,
-              STATUS_DAC_BUF_OVERFLOW     = 25'd17,
-              STATUS_ADC_BUF_UNDERFLOW    = 25'd18,
-              STATUS_ADC_BUF_OVERFLOW     = 25'd19,
-              STATUS_PREMAT_TRIG          = 25'd20,
-              STATUS_PREMAT_DAC_DIV       = 25'd21,
-              STATUS_PREMAT_ADC_DIV       = 25'd22,
-              STATUS_DAC_BUF_FILL_TIMEOUT = 25'd23,
-              STATUS_SPI_START_TIMEOUT    = 25'd24;
+              STATUS_DAC_OVER_THRESH      = 25'd11,
+              STATUS_ADC_OVER_THRESH      = 25'd12,
+              STATUS_DAC_THRESH_UNDERFLOW = 25'd13,
+              STATUS_DAC_THRESH_OVERFLOW  = 25'd14,
+              STATUS_ADC_THRESH_UNDERFLOW = 25'd15,
+              STATUS_ADC_THRESH_OVERFLOW  = 25'd16,
+              STATUS_DAC_BUF_UNDERFLOW    = 25'd17,
+              STATUS_DAC_BUF_OVERFLOW     = 25'd18,
+              STATUS_ADC_BUF_UNDERFLOW    = 25'd19,
+              STATUS_ADC_BUF_OVERFLOW     = 25'd20,
+              STATUS_PREMAT_TRIG          = 25'd21,
+              STATUS_PREMAT_DAC_DIV       = 25'd22,
+              STATUS_PREMAT_ADC_DIV       = 25'd23,
+              STATUS_DAC_BUF_FILL_TIMEOUT = 25'd24,
+              STATUS_SPI_START_TIMEOUT    = 25'd25;
 
   // Main state machine
   always @(posedge clk or posedge rst) begin
@@ -106,7 +108,7 @@ module hw_manager #(
       state <= IDLE;
       timer <= 0;
       sys_rst <= 1;
-      shutdown_force <= 1;
+      n_shutdown_force <= 0;
       n_shutdown_rst <= 1;
       unlock_cfg <= 1;
       dma_en <= 0;
@@ -150,7 +152,7 @@ module hw_manager #(
               timer <= 0;
               sys_rst <= 0;
               unlock_cfg <= 0;
-              shutdown_force <= 0;
+              n_shutdown_force <= 1;
             end
           end // if (sys_en)
           
@@ -200,7 +202,7 @@ module hw_manager #(
             state <= HALTED;
             timer <= 0;
             sys_rst <= 1;
-            shutdown_force <= 1;
+            n_shutdown_force <= 0;
             dma_en <= 0;
             status_code <= STATUS_DAC_BUF_FILL_TIMEOUT;
             ps_interrupt <= 1;
@@ -221,7 +223,7 @@ module hw_manager #(
             state <= HALTED;
             timer <= 0;
             sys_rst <= 1;
-            shutdown_force <= 1;
+            n_shutdown_force <= 0;
             dma_en <= 0;
             spi_en <= 0;
             status_code <= STATUS_SPI_START_TIMEOUT;
@@ -243,7 +245,8 @@ module hw_manager #(
               || lock_viol
               || shutdown_sense 
               || ext_shutdown 
-              || over_thresh 
+              || dac_over_thresh 
+              || adc_over_thresh 
               || dac_thresh_underflow 
               || dac_thresh_overflow 
               || adc_thresh_underflow 
@@ -260,7 +263,7 @@ module hw_manager #(
             state <= HALTED;
             timer <= 0;
             sys_rst <= 1;
-            shutdown_force <= 1;
+            n_shutdown_force <= 0;
             dma_en <= 0;
             spi_en <= 0;
             trig_en <= 0;
@@ -283,11 +286,17 @@ module hw_manager #(
             // External shutdown
             else if (ext_shutdown) status_code <= STATUS_EXT_SHUTDOWN;
 
-            // Integrator core over threshold
-            else if (over_thresh) begin
-              status_code <= STATUS_OVER_THRESH;
-              board_num <= extract_board_num(over_thresh);
-            end // if (over_thresh)
+            // DAC over threshold
+            else if (dac_over_thresh) begin
+              status_code <= STATUS_DAC_OVER_THRESH;
+              board_num <= extract_board_num(dac_over_thresh);
+            end // if (dac_over_thresh)
+
+            // ADC over threshold
+            else if (adc_over_thresh) begin
+              status_code <= STATUS_ADC_OVER_THRESH;
+              board_num <= extract_board_num(adc_over_thresh);
+            end // if (adc_over_thresh)
 
             // DAC threshold core FIFO underflow
             else if (dac_thresh_underflow) begin

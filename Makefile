@@ -30,10 +30,10 @@ $(warning - Current directory: $(shell pwd))
 $(error - REV_D_DIR: $(REV_D_DIR))
 endif
 
-# Check if the target is only clean or cleanall (to avoid unnecessary checks)
+# Check if the target is only clean or clean_all (to avoid unnecessary checks)
 CLEAN_ONLY = false
 ifneq ($(),$(MAKECMDGOALS))
-ifeq ($(),$(filter-out clean cleanall,$(MAKECMDGOALS)))
+ifeq ($(),$(filter-out clean clean_all,$(MAKECMDGOALS)))
 CLEAN_ONLY = true
 endif
 endif
@@ -41,7 +41,7 @@ endif
 $(info --------------------------)
 $(info ---- Making "$(MAKECMDGOALS)")
 
-# Run some checks and setup, but only if there are targets other than clean or cleanall
+# Run some checks and setup, but only if there are targets other than clean or clean_all
 ifneq (true, $(CLEAN_ONLY)) # Clean check
 $(info ----  for project "$(PROJECT)" and board "$(BOARD)" version $(BOARD_VER))
 
@@ -90,7 +90,7 @@ RM = rm -rf
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.bit
 
 # Targets that aren't real files
-.PHONY: all clean cleanall bit sd rootfs boot cores xpr xsa
+.PHONY: all clean clean_all bit sd rootfs boot cores xpr xsa
 
 # Default target is the first listed
 all: sd
@@ -108,7 +108,7 @@ clean:
 	$(RM) tmp
 
 # Remove all the output files too
-cleanall: clean
+clean_all: clean
 	@./scripts/make/status.sh "CLEANING OUTPUT FILES"
 	$(RM) out
 

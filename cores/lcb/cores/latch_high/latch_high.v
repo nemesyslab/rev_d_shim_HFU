@@ -9,13 +9,17 @@ module latch_high #(
   input  wire                          clk,
   input  wire                          resetn,
   input  wire [WIDTH-1:0]              din,
-  output reg  [WIDTH-1:0]              dout
+  output wire [WIDTH-1:0]              dout
 );
-  always @(posedge clk) begin
+  reg [WIDTH-1:0] latch;
+
+  assign dout = latch | din;
+
+  always @(posedge clk or negedge resetn) begin
     if (~resetn) begin
-      dout <= {WIDTH{1'b0}};
+      latch <= {WIDTH{1'b0}};
     end else begin
-      dout <= dout | din;
+      latch <= latch | din;
     end
   end
 endmodule

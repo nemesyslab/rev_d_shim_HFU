@@ -2,7 +2,7 @@
 
 module hw_manager #(
   // Delays for the various timeouts, default clock frequency is 250 MHz
-  parameter integer SHUTDOWN_FORCE_DELAY = 2500000,  //  10 ms, Delay after releasing "n_shutdown_force" before pulsing "n_shutdown_rst"
+  parameter integer SHUTDOWN_FORCE_DELAY = 25000000, // 100 ms, Delay after releasing "n_shutdown_force" before pulsing "n_shutdown_rst"
   parameter integer SHUTDOWN_RESET_PULSE = 25000,    // 100 us, Pulse width for "n_shutdown_rst"
   parameter integer SHUTDOWN_RESET_DELAY = 25000000, // 100 ms, Delay after pulsing "n_shutdown_rst" before starting the system
   parameter integer BUF_LOAD_WAIT  = 250000000, // Full buffer load from DMA after "dma_en" is set

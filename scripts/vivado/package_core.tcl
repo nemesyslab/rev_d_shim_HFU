@@ -20,13 +20,13 @@ file delete -force tmp/cores/$core_path tmp/cores/$core_path.cache tmp/cores/$co
 create_project -part $part_name $core_name tmp/cores/$vendor_name
 
 # Add the main source file to the core project
-add_files -norecurse cores/$core_path.v
+add_files -norecurse cores/$vendor_name/cores/$core_name/$core_name.v
 
 # Set the main (core_name) module as the top module
 set_property TOP $core_name [current_fileset]
 
 # Load in the other source files (submodules from the vendor directory)
-set files [glob -nocomplain cores/$vendor_name/submodules/*.v]
+set files [glob -nocomplain cores/$vendor_name/cores/$core_name/submodules/*.v]
 if {[llength $files] > 0} {
   add_files -norecurse $files
 }

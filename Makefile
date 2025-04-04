@@ -189,7 +189,8 @@ xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
 
 # Core RTL needs to be packaged to be used in the block design flow
 # Cores are packaged using the `scripts/vivado/package_core.tcl` script
-tmp/cores/%: cores/%.v
+# TODO: This isn't checking for changes to the modules.
+tmp/cores/%: 
 	@./scripts/make/status.sh "MAKING CORE: $*"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/vivado/package_core.tcl -tclargs $* $(PART)

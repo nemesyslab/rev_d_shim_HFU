@@ -1,5 +1,5 @@
 # This script creates a custom Vivado IP core for a given core path and part name.
-# The cores are packaged to tmp/user_cores/[vendor_name]/cores/[core_name] and used in the project.tcl script.
+# The cores are packaged to tmp/custom_cores/[vendor_name]/cores/[core_name] and used in the project.tcl script.
 
 package require fileutil
 package require json
@@ -12,16 +12,16 @@ set core_name [lindex $argv 1]
 set part_name [lindex $argv 2]
 
 # Set the source directory for the core
-set src_path user_cores/$vendor_name/cores/$core_name
+set src_path custom_cores/$vendor_name/cores/$core_name
 # Set the temporary build directory
-set tmp_path tmp/user_cores/$vendor_name/$core_name
+set tmp_path tmp/custom_cores/$vendor_name/$core_name
 
 
 # Clear out old build files
 file delete -force $tmp_path $tmp_path.cache $tmp_path.hw $tmp_path.ip_user_files $tmp_path.sim $tmp_path.xpr
 
 # Create the core project
-create_project -part $part_name $core_name tmp/user_cores/$vendor_name
+create_project -part $part_name $core_name tmp/custom_cores/$vendor_name
 
 # Add the main source file to the core project
 add_files -norecurse $src_path/$core_name.v
@@ -49,7 +49,7 @@ set_property VENDOR $vendor_name $core
 
 ## Extract the info for the vendor display name and company URL
 # Read the json config for the board into a dict
-set vendor_info_fname user_cores/$vendor_name/vendor_info.json
+set vendor_info_fname custom_cores/$vendor_name/vendor_info.json
 if {[file exists $vendor_info_fname]} {
     set vendor_info_fd [open $vendor_info_fname "r"]
 } else {

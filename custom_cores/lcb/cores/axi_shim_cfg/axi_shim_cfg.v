@@ -56,7 +56,7 @@ module axi_shim_cfg #
   input  wire [3:0]                 s_axi_wstrb,   // AXI4-Lite subordinate: Write strobe
   input  wire                       s_axi_wvalid,  // AXI4-Lite subordinate: Write data valid
   output wire                       s_axi_wready,  // AXI4-Lite subordinate: Write data ready
-  output wire [1:0]                 s_axi_bresp,   // AXI4-Lite subordinate: Write response
+  output reg  [1:0]                 s_axi_bresp,   // AXI4-Lite subordinate: Write response
   output wire                       s_axi_bvalid,  // AXI4-Lite subordinate: Write response valid
   input  wire                       s_axi_bready,  // AXI4-Lite subordinate: Write response ready
   input  wire [AXI_ADDR_WIDTH-1:0]  s_axi_araddr,  // AXI4-Lite subordinate: Read address

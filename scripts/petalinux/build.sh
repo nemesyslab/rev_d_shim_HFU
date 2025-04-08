@@ -18,7 +18,11 @@ set --
 set -e
 
 # Check that the necessary PetaLinux config files (and dependencies) exist
-./scripts/check/petalinux_rootfs_cfg.sh ${BRD} ${VER} ${PRJ}
+./scripts/check/kernel_modules.sh ${BRD} ${VER} ${PRJ}
+
+# Delete any existing project directory
+echo "[PTLNX BUILD SCRIPT] Deleting any existing PetaLinux project directory"
+rm -rf tmp/${BRD}/${VER}/${PRJ}/petalinux
 
 # Create and enter the project
 cd tmp/${BRD}/${VER}/${PRJ}
@@ -38,6 +42,17 @@ petalinux-config -c rootfs --silentconfig
 echo "[PTLNX BUILD SCRIPT] Patching and configuring PetaLinux root filesystem"
 patch project-spec/configs/rootfs_config ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/rootfs_config.patch
 petalinux-config -c rootfs --silentconfig
+
+# Add kernel modules to the project
+echo "[PTLNX BUILD SCRIPT] Adding kernel modules to PetaLinux project"
+if [ -f ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/kernel_modules ]; then
+    while IFS= read -r MOD; do
+        echo "[PTLNX BUILD SCRIPT] Adding kernel module: ${MOD}"
+        petalinux-create modules --name ${MOD} --enable
+    done < ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/kernel_modules
+else
+    echo "[PTLNX BUILD SCRIPT] No kernel_modules file found, skipping kernel module addition"
+fi
 
 # Build the project
 echo "[PTLNX BUILD SCRIPT] Building the PetaLinux project"

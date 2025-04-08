@@ -39,7 +39,11 @@ endif
 endif
 
 $(info --------------------------)
+ifeq ($(),$(MAKECMDGOALS))
+$(info ---- Making "all")
+else
 $(info ---- Making "$(MAKECMDGOALS)")
+endif
 
 # Run some checks and setup, but only if there are targets other than clean or clean_all
 ifneq (true, $(CLEAN_ONLY)) # Clean check
@@ -102,7 +106,7 @@ all: sd
 clean_project:
 	@./scripts/make/status.sh "CLEANING PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)"
 	$(RM) tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)
-	$(RM) -r $(addsuffix *, $(addprefix tmp/user_cores/, $(PROJECT_CORES)))
+	$(RM) -r $(addsuffix *, $(addprefix tmp/custom_cores/, $(PROJECT_CORES)))
 
 # Remove all the intermediate and temporary files
 clean:
@@ -172,7 +176,7 @@ boot: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
 # The necessary cores for the specific project are extracted
 # 	from `block_design.tcl` (recursively by sub-modules)
 #		by `scripts/make/get_cores_from_tcl.sh`
-cores: $(addprefix tmp/user_cores/, $(PROJECT_CORES))
+cores: $(addprefix tmp/custom_cores/, $(PROJECT_CORES))
 
 # The Xilinx project file
 # This file can be edited in Vivado to test TCL commands and changes
@@ -194,9 +198,9 @@ xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
 # Cores are packaged using the `scripts/vivado/package_core.tcl` script
 # This make target uses "pattern-specific variables" (GNU Make 6.12) to set the vendor and core
 #  as well as "secondary expansion" (GNU Make 3.9) to allow for their use in the prerequisite
-tmp/user_cores/%: VENDOR = $(word 1,$(subst /, ,$*))
-tmp/user_cores/%: CORE = $(word 2,$(subst /, ,$*))
-tmp/user_cores/%: user_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v
+tmp/custom_cores/%: VENDOR = $(word 1,$(subst /, ,$*))
+tmp/custom_cores/%: CORE = $(word 2,$(subst /, ,$*))
+tmp/custom_cores/%: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v
 	@./scripts/make/status.sh "MAKING USER CORE: '$(CORE)' by '$(VENDOR)'"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/vivado/package_core.tcl -tclargs $(VENDOR) $(CORE) $(PART)
@@ -205,7 +209,7 @@ tmp/user_cores/%: user_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v
 # Requires all the cores
 # Built using the `scripts/vivado/project.tcl` script, which uses
 # 	the block design and ports files from the project
-tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr: projects/$(PROJECT)/block_design.tcl projects/$(PROJECT)/ports.tcl $(BOARD_XDC) $(addprefix tmp/user_cores/, $(PROJECT_CORES))
+tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr: projects/$(PROJECT)/block_design.tcl projects/$(PROJECT)/ports.tcl $(BOARD_XDC) $(addprefix tmp/custom_cores/, $(PROJECT_CORES))
 	@./scripts/make/status.sh "MAKING PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/vivado/project.tcl -tclargs $(BOARD) $(BOARD_VER) $(PROJECT)

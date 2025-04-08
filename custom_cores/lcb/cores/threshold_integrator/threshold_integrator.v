@@ -7,7 +7,7 @@ module threshold_integrator (
   input   wire         enable            ,
   input   wire [ 31:0] window            ,
   input   wire [ 14:0] threshold_average ,
-  input   wire         sample_core_done          ,
+  input   wire         sample_core_done  ,
   input   wire [127:0] value_in_concat   ,
   input   wire [  7:0] value_ready_concat,
 

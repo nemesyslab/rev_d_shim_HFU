@@ -21,13 +21,13 @@ set -e
 ./scripts/check/petalinux_cfg.sh ${BRD} ${VER} ${PRJ}
 
 # Check that the necessary PetaLinux rootfs config file exists
-if [ ! -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/rootfs_config.patch" ]; then
+if [ ! -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/rootfs_config.patch" ]; then
     echo "[CHECK PTLNX ROOTFS CFG] ERROR:"
     echo "Missing PetaLinux filesystem configuration patch file for ${PBV}"
-    echo " Path: projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/rootfs_config.patch"
+    echo " Path: projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/rootfs_config.patch"
     echo "You can create this file by running the following command:"
     echo
-    echo " Path: scripts/petalinux/config_rootfs.sh ${BRD} ${VER} ${PRJ}"
+    echo " scripts/petalinux/config_rootfs.sh ${BRD} ${VER} ${PRJ}"
     echo
     exit 1
 fi

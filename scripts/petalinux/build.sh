@@ -29,27 +29,42 @@ cd tmp/${BRD}/${VER}/${PRJ}
 petalinux-create -t project --template zynq --name petalinux --force
 cd petalinux
 
-# Patch the project configuration
+# Initialize the project with the hardware description
 echo "[PTLNX BUILD SCRIPT] Initializing default PetaLinux project configuration"
 petalinux-config --get-hw-description ../hw_def.xsa --silentconfig
+
+# Check that the PetaLinux version matches the environment variable
+PETALINUX_CONF_PATH="components/yocto/layers/meta-petalinux/conf/distro/include/petalinux-version.conf"
+if [ -f "$PETALINUX_CONF_PATH" ]; then
+    CONF_XILINX_VER_MAIN=$(grep -oP '(?<=XILINX_VER_MAIN = ")[^"]+' "$PETALINUX_CONF_PATH")
+    if [ "$PETALINUX_VERSION" != "$CONF_XILINX_VER_MAIN" ]; then
+        echo "[PTLNX BUILD SCRIPT] ERROR: PETALINUX_VERSION (${PETALINUX_VERSION}) does not match XILINX_VER_MAIN (${CONF_XILINX_VER_MAIN}) in petalinux-version.conf. This likely means you have the wrong or missing PETALINUX_VERSION environment variable set."
+        exit 1
+    fi
+else
+    echo "[PTLNX BUILD SCRIPT] ERROR: petalinux-version.conf not found at $PETALINUX_CONF_PATH"
+    exit 1
+fi
+
+# Patch the project configuration
 echo "[PTLNX BUILD SCRIPT] Patching and configuring PetaLinux project"
-patch project-spec/configs/config ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch
+patch project-spec/configs/config ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch
 petalinux-config --silentconfig
 
 # Patch the root filesystem configuration
 echo "[PTLNX BUILD SCRIPT] Initializing default PetaLinux root filesystem configuration"
 petalinux-config -c rootfs --silentconfig
 echo "[PTLNX BUILD SCRIPT] Patching and configuring PetaLinux root filesystem"
-patch project-spec/configs/rootfs_config ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/rootfs_config.patch
+patch project-spec/configs/rootfs_config ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/rootfs_config.patch
 petalinux-config -c rootfs --silentconfig
 
 # Add kernel modules to the project
 echo "[PTLNX BUILD SCRIPT] Adding kernel modules to PetaLinux project"
-if [ -f ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/kernel_modules ]; then
+if [ -f ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/kernel_modules ]; then
     while IFS= read -r MOD; do
         echo "[PTLNX BUILD SCRIPT] Adding kernel module: ${MOD}"
         petalinux-create modules --name ${MOD} --enable
-    done < ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/kernel_modules
+    done < ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/kernel_modules
 else
     echo "[PTLNX BUILD SCRIPT] No kernel_modules file found, skipping kernel module addition"
 fi

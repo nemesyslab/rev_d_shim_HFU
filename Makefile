@@ -30,6 +30,21 @@ $(warning - Current directory: $(shell pwd))
 $(error - REV_D_DIR: $(REV_D_DIR))
 endif
 
+# Check if the Vivado settings64.sh file exists
+ifeq ($(wildcard $(VIVADO_PATH)/settings64.sh),)
+$(error Vivado path environment variable VIVADO_PATH is not/incorrectly set - "$(VIVADO_PATH)". VIVADO_PATH/settings64.sh must exist)
+endif
+
+# Check if the PetaLinux settings.sh file exists
+ifeq ($(wildcard $(PETALINUX_PATH)/settings.sh),)
+$(error PetaLinux path environment variable PETALINUX_PATH is not/incorrectly set - "$(PETALINUX_PATH)". PETALINUX_PATH/settings.sh must exist)
+endif
+
+# Check that the PetaLinux version environment variable is set
+ifeq ($(PETALINUX_VERSION),)
+$(error PetaLinux version environment variable PETALINUX_VERSION is not set)
+endif
+
 # Check if the target is only clean or clean_all (to avoid unnecessary checks)
 CLEAN_ONLY = false
 ifneq ($(),$(MAKECMDGOALS))

@@ -37,13 +37,13 @@ set --
 
 # Check the XSA and dependencies
 echo "[PTLNX CFG SCRIPT] Checking XSA and dependencies for ${PBV}"
-./scripts/check/xsa.sh ${BRD} ${VER} ${PRJ} || exit 1
+./scripts/check/petalinux_req.sh ${BRD} ${VER} ${PRJ} || exit 1
 
 # Check that the project configuration patch does not already exist if not updating
-if [ -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch" ] && [ $UPDATE -ne 1 ]; then
+if [ -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch" ] && [ $UPDATE -ne 1 ]; then
     echo "[PTLNX CFG SCRIPT] ERROR:"
-    echo "PetaLinux project configuration patch already exists for ${PBV}"
-    echo "  projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch"
+    echo "PetaLinux version ${PETALINUX_VERSION} project configuration patch already exists for ${PBV}"
+    echo "  projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch"
     echo "If you want to use that patch as the start point, use the following command:"
     echo
     echo "  ${CMD} ${BRD} ${VER} ${PRJ} update"
@@ -51,10 +51,10 @@ if [ -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch" ] && [ $UPDAT
 fi
 
 # Check that the project configuration patch DOES exist if updating
-if [ ! -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch" ] && [ $UPDATE -eq 1 ]; then
+if [ ! -f "projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch" ] && [ $UPDATE -eq 1 ]; then
     echo "[PTLNX CFG SCRIPT] ERROR:"
-    echo "Missing PetaLinux project configuration patch for ${PBV}"
-    echo "  projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch"
+    echo "Missing PetaLinux version ${PETALINUX_VERSION} project configuration patch for ${PBV}"
+    echo "  projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch"
     echo "If you want to create a new patch, copy one in or use the following command:"
     echo
     echo "  ${CMD} ${BRD} ${VER} ${PRJ}"
@@ -78,6 +78,19 @@ cd petalinux
 echo "[PTLNX CFG SCRIPT] Initializing default PetaLinux project configuration"
 petalinux-config --get-hw-description ../../${BRD}/${VER}/${PRJ}/hw_def.xsa --silentconfig
 
+# Check that the PetaLinux version matches the environment variable
+PETALINUX_CONF_PATH="components/yocto/layers/meta-petalinux/conf/distro/include/petalinux-version.conf"
+if [ -f "$PETALINUX_CONF_PATH" ]; then
+    CONF_XILINX_VER_MAIN=$(grep -oP '(?<=XILINX_VER_MAIN = ")[^"]+' "$PETALINUX_CONF_PATH")
+    if [ "$PETALINUX_VERSION" != "$CONF_XILINX_VER_MAIN" ]; then
+        echo "[PTLNX CFG SCRIPT] ERROR: PETALINUX_VERSION (${PETALINUX_VERSION}) does not match XILINX_VER_MAIN (${CONF_XILINX_VER_MAIN}) in petalinux-version.conf. This likely means you have the wrong or missing PETALINUX_VERSION environment variable set."
+        exit 1
+    fi
+else
+    echo "[PTLNX CFG SCRIPT] ERROR: petalinux-version.conf not found at $PETALINUX_CONF_PATH"
+    exit 1
+fi
+
 # Copy the default project configuration
 echo "[PTLNX CFG SCRIPT] Saving default PetaLinux project configuration"
 cp project-spec/configs/config project-spec/configs/config.default
@@ -85,7 +98,7 @@ cp project-spec/configs/config project-spec/configs/config.default
 # If updating, apply the existing patch
 if [ $UPDATE -eq 1 ]; then
     echo "[PTLNX CFG SCRIPT] Applying existing PetaLinux project configuration patch"
-    patch project-spec/configs/config ../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch
+    patch project-spec/configs/config ../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch
 fi
 
 # Manually configure the project
@@ -96,7 +109,7 @@ petalinux-config
 echo "[PTLNX CFG SCRIPT] Creating PetaLinux project configuration patch"
 diff -u project-spec/configs/config.default project-spec/configs/config | \
     tail -n +3 > \
-    ../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/config.patch
+    ../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/config.patch
 
 # Replace the patched project configuration with the default
 echo "[PTLNX CFG SCRIPT] Restoring default PetaLinux project configuration for template project"

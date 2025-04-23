@@ -20,7 +20,7 @@ module axi_shim_cfg #
   parameter integer INTEGRATOR_WINDOW_DEFAULT = 5000000, // 100 ms at 50MHz
 
   // Integrator enable (+20)
-  parameter integer INTEG_EN_DEFAULT = 1
+  parameter integer INTEG_EN_DEFAULT = 1,
 
   // Minimum write address (+24)
   parameter integer MIN_WRITE_ADDR_DEFAULT = 0,

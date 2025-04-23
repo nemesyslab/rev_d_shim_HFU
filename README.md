@@ -6,6 +6,8 @@ as well as the Open-MRI OCRA project (also based off of Pavel Demin's repo)
 
 # Rev D Shim
 
+***TODO OUT OF DATE -- IN PROGRESS***
+
 ## Getting Started
 
 ### Required Tools

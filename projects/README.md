@@ -1,5 +1,7 @@
 # Projects
 
+***TODO OUT OF DATE -- IN PROGRESS***
+
 This directory contains the structured source files to build individual projects. Each project is a Vivado project that can be built with the provided Makefile for certain configured boards. They also include the necessary configuration information for a PetaLinux OS to be built and loaded onto the board.
 
 A project directory should follow the following structure:

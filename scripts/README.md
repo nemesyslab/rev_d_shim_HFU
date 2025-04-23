@@ -1,5 +1,7 @@
 # Scripts
 
+***TODO OUT OF DATE -- IN PROGRESS***
+
 A collection of scripts used in various parts of the automated build process. Some are run by the Makefile (or each other), others are run manually.
 
 ```

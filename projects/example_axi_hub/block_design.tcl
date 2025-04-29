@@ -7,10 +7,10 @@
 # - Unused AXI ACP port disabled
 # Connections:
 # - GP AXI 0 (Master) clock is connected to the processing system's first clock, FCLK_CLK0
-init_ps ps_0 {
+init_ps ps {
   PCW_USE_S_AXI_ACP 0
 } {
-  M_AXI_GP0_ACLK ps_0/FCLK_CLK0
+  M_AXI_GP0_ACLK ps/FCLK_CLK0
 }
 
 
@@ -22,7 +22,7 @@ cell xilinx.com:ip:xlconstant const_0
 # - Resetn is constant low (active high)
 cell xilinx.com:ip:proc_sys_reset rst_0 {} {
   ext_reset_in const_0/dout
-  slowest_sync_clk ps_0/FCLK_CLK0
+  slowest_sync_clk ps/FCLK_CLK0
 }
 
 
@@ -41,15 +41,15 @@ cell pavel-demin:user:axi_hub hub_0 {
   CFG_DATA_WIDTH 96
   STS_DATA_WIDTH 64
 } {
-  S_AXI ps_0/M_AXI_GP0
-  aclk ps_0/FCLK_CLK0
+  S_AXI ps/M_AXI_GP0
+  aclk ps/FCLK_CLK0
   aresetn rst_0/peripheral_aresetn
 }
 # Assign the address of the axi_hub in the PS address space
 # - Offset: 0x40000000
 # - Range: 128M (to 0x47FFFFFF)
 # - Subordinate Port: hub_0/S_AXI
-addr 0x40000000 128M hub_0/S_AXI
+addr 0x40000000 128M hub_0/S_AXI ps/M_AXI_GP0
 
 
 
@@ -67,7 +67,7 @@ cell pavel-demin:user:port_slicer fifo_0_cfg {
 module fifo_0 {
   source projects/example_axi_hub/modules/fifo.tcl
 } {
-  aclk ps_0/FCLK_CLK0
+  aclk ps/FCLK_CLK0
   s_axis hub_0/M00_AXIS
   m_axis hub_0/S00_AXIS
   cfg_word fifo_0_cfg/dout

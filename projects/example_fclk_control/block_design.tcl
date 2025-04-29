@@ -5,7 +5,7 @@
 # - Disable AXI ACP interface
 # - Disable M_AXI_GP0 interface
 # Connect the FCLK to an external port
-init_ps ps_0 {
+init_ps ps {
   PCW_USE_S_AXI_ACP 0
   PCW_USE_M_AXI_GP0 0
 } {

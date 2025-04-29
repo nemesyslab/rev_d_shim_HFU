@@ -159,24 +159,9 @@ rootfs: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/rootfs.tar.g
 
 # The compressed boot files
 # Requires the petalinux build (which will make the rootfs)
-boot: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
+boot: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/BOOT.tar.gz
 	mkdir -p out/$(BOARD)/$(BOARD_VER)/$(PROJECT)
-	@./scripts/make/status.sh "PACKAGING BOOT.BIN"
-	cd tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux && \
-		source $(PETALINUX_PATH)/settings.sh && \
-		petalinux-package --boot \
-		--format BIN \
-		--fsbl \
-		--fpga \
-		--kernel \
-		--boot-device sd \
-		--force
-	tar -czf out/$(BOARD)/$(BOARD_VER)/$(PROJECT)/BOOT.tar.gz \
-		-C tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux \
-		BOOT.BIN \
-		image.ub \
-		boot.scr \
-		system.dtb
+	cp tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/BOOT.tar.gz out/$(BOARD)/$(BOARD_VER)/$(PROJECT)/BOOT.tar.gz
 
 
 #############################################
@@ -243,11 +228,25 @@ tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PRO
 	@./scripts/make/status.sh "MAKING HW DEF: $(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa"
 	$(VIVADO) -source scripts/vivado/hw_def.tcl -tclargs $(BOARD)/$(BOARD_VER)/$(PROJECT)
 
-# The compressed root filesystem
+# The PetaLinux project
 # Requires the hardware definition file
-# Build using the scripts/petalinux/build.sh file
-tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
-	@./scripts/make/status.sh "MAKING LINUX SYSTEM: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
+# Built using the scripts/petalinux/project.sh script
+tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
+	@./scripts/make/status.sh "MAKING CONFIGURED PETALINUX PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
 	source $(PETALINUX_PATH)/settings.sh && \
-		scripts/petalinux/build.sh $(BOARD) $(BOARD_VER) $(PROJECT)
+		scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT)
 
+# The compressed root filesystem
+# Requires the PetaLinux project
+tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux
+	@./scripts/make/status.sh "MAKING LINUX SYSTEM FOR: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
+	cd tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux && \
+		source $(PETALINUX_PATH)/settings.sh && \
+		petalinux-build
+
+# The compressed boot files
+# Requires the root filesystem
+# Built using the petalinux package boot command
+tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/BOOT.tar.gz: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/rootfs.tar.gz
+	@./scripts/make/status.sh "PACKAGING BOOT FILES FOR: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
+	scripts/petalinux/package_boot.sh $(BOARD) $(BOARD_VER) $(PROJECT)

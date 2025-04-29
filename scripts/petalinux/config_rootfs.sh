@@ -63,6 +63,14 @@ fi
 # Source the PetaLinux settings script (make sure to clear positional parameters first)
 source ${PETALINUX_PATH}/settings.sh
 
+# Extract the PetaLinux year from the version string
+if [[ "$PETALINUX_VERSION" =~ ^([0-9]{4}) ]]; then
+    PETALINUX_YEAR=${BASH_REMATCH[1]}
+else
+    echo "[PTLNX CFG SCRIPT] ERROR: Invalid PetaLinux version format (${PETALINUX_VERSION}). Expected format: YYYY.X"
+    exit 1
+fi
+
 # Create a new template project
 cd tmp
 if [ -d "petalinux_template" ]; then
@@ -70,7 +78,13 @@ if [ -d "petalinux_template" ]; then
 fi
 mkdir petalinux_template
 cd petalinux_template
-petalinux-create -t project --template zynq --name petalinux
+if [ "$PETALINUX_YEAR" -lt 2024 ]; then
+    echo "[PTLNX BUILD SCRIPT] Using legacy PetaLinux project creation command for year ${PETALINUX_YEAR}"
+    petalinux-create -t project --template zynq --name petalinux --force
+else
+    echo "[PTLNX BUILD SCRIPT] Using PetaLinux project creation python arguments (for year ${PETALINUX_YEAR})"
+    petalinux-create project --template zynq --name petalinux --force
+fi
 cd petalinux
 
 

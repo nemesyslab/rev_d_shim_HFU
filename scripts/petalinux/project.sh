@@ -24,9 +24,23 @@ set -e
 echo "[PTLNX BUILD SCRIPT] Deleting any existing PetaLinux project directory"
 rm -rf tmp/${BRD}/${VER}/${PRJ}/petalinux
 
+# Extract the PetaLinux year from the version string
+if [[ "$PETALINUX_VERSION" =~ ^([0-9]{4}) ]]; then
+    PETALINUX_YEAR=${BASH_REMATCH[1]}
+else
+    echo "[PTLNX BUILD SCRIPT] ERROR: Invalid PetaLinux version format (${PETALINUX_VERSION}). Expected format: YYYY.X"
+    exit 1
+fi
+
 # Create and enter the project
 cd tmp/${BRD}/${VER}/${PRJ}
-petalinux-create -t project --template zynq --name petalinux --force
+if [ "$PETALINUX_YEAR" -lt 2024 ]; then
+    echo "[PTLNX BUILD SCRIPT] Using legacy PetaLinux project creation command for year ${PETALINUX_YEAR}"
+    petalinux-create -t project --template zynq --name petalinux --force
+else
+    echo "[PTLNX BUILD SCRIPT] Using PetaLinux project creation python arguments (for year ${PETALINUX_YEAR})"
+    petalinux-create project --template zynq --name petalinux --force
+fi
 cd petalinux
 
 # Initialize the project with the hardware description
@@ -68,7 +82,3 @@ if [ -f ../../../../../projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_V
 else
     echo "[PTLNX BUILD SCRIPT] No kernel_modules file found, skipping kernel module addition"
 fi
-
-# Build the project
-echo "[PTLNX BUILD SCRIPT] Building the PetaLinux project"
-petalinux-build

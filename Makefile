@@ -109,7 +109,7 @@ RM = rm -rf
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.bit
 
 # Targets that aren't real files (GNU Make 4.9)
-.PHONY: all clean clean_project clean_all bit sd rootfs boot cores xpr xsa
+.PHONY: all clean clean_project clean_all bit sd rootfs boot cores xpr xsa petalinux
 
 # Enable secondary expansion (GNU Make 3.9) to allow for more complex pattern matching (see cores target)
 .SECONDEXPANSION:
@@ -186,6 +186,10 @@ xpr: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr
 # This file is used by petalinux to build the linux system
 xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
 
+# The PetaLinux project
+# This project is used to build the linux system
+petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux
+
 #############################################
 
 
@@ -246,7 +250,8 @@ tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PRO
 tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
 	@./scripts/make/status.sh "MAKING CONFIGURED PETALINUX PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
 	source $(PETALINUX_PATH)/settings.sh && \
-		scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT)
+		scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT) && \
+		scripts/petalinux/software.sh $(BOARD) $(BOARD_VER) $(PROJECT)
 
 # The compressed root filesystem
 # Requires the PetaLinux project

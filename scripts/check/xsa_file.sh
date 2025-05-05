@@ -1,12 +1,12 @@
 #!/bin/bash
-# Check the PetaLinux project for a board and version
+# Check tif the XSA file for a project, board, and version exists
 # Arguments: <board_name> <board_version> <project_name> [--full]
-# Full check: PetaLinux environment and prerequisites
-# Minimum check: PetaLinux environment
+# Full check: Project source and prerequisites
+# Minimum check: None
 
 # Parse arguments
 if [ $# -lt 3 ] || [ $# -gt 4 ] || ( [ $# -eq 4 ] && [ "$4" != "--full" ] ); then
-  echo "[CHECK PTLNX PROJECT] ERROR:"
+  echo "[CHECK XSA FILE] ERROR:"
   echo "Usage: $0 <board_name> <board_version> <project_name> [--full]"
   exit 1
 fi
@@ -27,21 +27,18 @@ set -e
 
 # Check prerequisites. If full, check all prerequisites. Otherwise, just the immediate necessary ones.
 if $FULL_CHECK; then
-  # Full check: PetaLinux environment and prerequisites
-  ./scripts/check/petalinux_env.sh ${BRD} ${VER} ${PRJ} --full
-else
-  # Minimum check: PetaLinux environment
-  ./scripts/check/petalinux_env.sh ${BRD} ${VER} ${PRJ}
-fi
+  # Full check: Project source and prerequisites
+  ./scripts/check/project_src.sh ${BRD} ${VER} ${PRJ} --full
+fi # Minimum check: None
 
-# Check that the necessary PetaLinux project exists
-if [ ! -d "tmp/${BRD}/${VER}/${PRJ}/petalinux" ]; then
-  echo "[CHECK PTLNX PROJECT] ERROR:"
-  echo "Missing PetaLinux project directory for ${PBV}"
-  echo " Path: tmp/${BRD}/${VER}/${PRJ}/petalinux"
+# Check that the necessary XSA exists
+if [ ! -f "tmp/${BRD}/${VER}/${PRJ}/hw_def.xsa" ]; then
+  echo "[CHECK XSA FILE] ERROR:"
+  echo "Missing Vivado-generated XSA hardware definition file for ${PBV}"
+  echo " Path: tmp/${BRD}/${VER}/${PRJ}/hw_def.xsa"
   echo "First run the following command:"
   echo
-  echo " make BOARD=${BRD} BOARD_VER=${VER} PROJECT=${PRJ} petalinux"
+  echo " make BOARD=${BRD} BOARD_VER=${VER} PROJECT=${PRJ} xsa"
   echo
   exit 1
 fi

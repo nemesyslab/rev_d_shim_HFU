@@ -1,10 +1,18 @@
 #!/bin/bash
-# Check if the XSA for a project exists
-# Arguments: <board_name> <board_version> <project_name>
-if [ $# -ne 3 ]; then
-    echo "[CHECK PTLNX CFG] ERROR:"
-    echo "Usage: $0 <board_name> <board_version> <project_name>"
-    exit 1
+# Check the kernel modules for a project, board, and version
+# Arguments: <board_name> <board_version> <project_name> [--full]
+# Full check: PetaLinux project and prerequisites
+# Minimum check: Project source and PetaLinux project (PetaLinux project check includes PetaLinux environment check)
+
+# Parse arguments
+if [ $# -lt 3 ] || [ $# -gt 4 ] || ( [ $# -eq 4 ] && [ "$4" != "--full" ] ); then
+  echo "[CHECK KERNEL MODULES] ERROR:"
+  echo "Usage: $0 <board_name> <board_version> <project_name> [--full]"
+  exit 1
+fi
+FULL_CHECK=false
+if [[ "$4" == "--full" ]]; then
+  FULL_CHECK=true
 fi
 
 # Store the positional parameters in named variables and clear them
@@ -17,18 +25,25 @@ set --
 # If any subsequent command fails, exit immediately
 set -e
 
-# Check that the PetaLinux project and its dependencies exist
-./scripts/check/petalinux_project.sh ${BRD} ${VER} ${PRJ}
+# Check prerequisites. If full, check all prerequisites. Otherwise, just the immediate necessary ones.
+if $FULL_CHECK; then
+  # Full check: PetaLinux project and prerequisites
+  ./scripts/check/petalinux_project.sh ${BRD} ${VER} ${PRJ} --full
+else
+  # Minimum check: Project source and PetaLinux project (includes PetaLinux environment check)
+  ./scripts/check/project_src.sh ${BRD} ${VER} ${PRJ}
+  ./scripts/check/petalinux_project.sh ${BRD} ${VER} ${PRJ} # Includes PetaLinux environment check
+fi
 
 # Check for the kernel_modules file
 KERNEL_MODULES_FILE="projects/${PRJ}/cfg/${BRD}/${VER}/petalinux/${PETALINUX_VERSION}/kernel_modules"
 if [ -f "${KERNEL_MODULES_FILE}" ]; then
   while IFS= read -r module || [ -n "$module" ]; do
     # Ensure each line is a single word
-    if [[ ! "$module" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    if [[ ! "$module" =~ ^[a-z0-9-]+$ ]]; then
       echo "[CHECK KERNEL MODULES] ERROR:"
       echo "Invalid module name '${module}' in ${KERNEL_MODULES_FILE}"
-      echo "Each line must contain only one valid word (alphanumeric, underscores, or hyphens)."
+      echo "Each line must contain only one valid word in kebab-case (lowercase alphanumeric and hyphens)."
       exit 1
     fi
 
@@ -61,7 +76,7 @@ if [ -f "${KERNEL_MODULES_FILE}" ]; then
       echo "Expected path: kernel_modules/${module}/petalinux/${PETALINUX_VERSION}/${module}.c"
       exit 1
     fi
-  done < "${KERNEL_MODULES_FILE}"
+  done <"${KERNEL_MODULES_FILE}"
 else
   echo "[CHECK KERNEL MODULES] INFO: No kernel_modules file found. Skipping kernel module checks."
 fi

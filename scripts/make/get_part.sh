@@ -2,9 +2,9 @@
 # Get the FPGA part name from the XML file for the given board and version
 # Arguments: <board_name> <board_version>
 if [ $# -ne 2 ]; then
-    echo "[GET PART] ERROR:"
-    echo "Usage: $0 <board_name> <board_version>"
-    exit 1
+  echo "[GET PART] ERROR:"
+  echo "Usage: $0 <board_name> <board_version>"
+  exit 1
 fi
 
 # Store the positional parameters in named variables and clear them

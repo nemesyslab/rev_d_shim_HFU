@@ -65,10 +65,10 @@ ifneq (true, $(CLEAN_ONLY)) # Clean check
 $(info ----  for project "$(PROJECT)" and board "$(BOARD)" version $(BOARD_VER))
 
 # Check the board, board version, and project
-ifneq ($(), $(shell ./scripts/check/project.sh $(BOARD) $(BOARD_VER) $(PROJECT)))
+ifneq ($(), $(shell ./scripts/check/project_src.sh $(BOARD) $(BOARD_VER) $(PROJECT) --full))
 $(info --------------------------)
 $(info ----  Project check failed)
-$(info ----  $(shell ./scripts/check/project.sh $(BOARD) $(BOARD_VER) $(PROJECT)))
+$(info ----  $(shell ./scripts/check/project_src.sh $(BOARD) $(BOARD_VER) $(PROJECT) --full))
 $(info --------------------------)
 $(error Missing sources)
 endif
@@ -109,7 +109,7 @@ RM = rm -rf
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.bit
 
 # Targets that aren't real files (GNU Make 4.9)
-.PHONY: all clean clean_project clean_all bit sd rootfs boot cores xpr xsa petalinux
+.PHONY: all clean clean_project clean_all bit sd rootfs boot cores xpr xsa petalinux petalinux_build
 
 # Enable secondary expansion (GNU Make 3.9) to allow for more complex pattern matching (see cores target)
 .SECONDEXPANSION:
@@ -190,6 +190,13 @@ xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
 # This project is used to build the linux system
 petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux
 
+# Build the PetaLinux project
+petalinux_build: petalinux
+	@./scripts/make/status.sh "MAKING LINUX SYSTEM FOR: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
+	cd tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux && \
+		source $(PETALINUX_PATH)/settings.sh && \
+		petalinux-build
+
 #############################################
 
 
@@ -249,10 +256,9 @@ tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PRO
 # Built using the scripts/petalinux/project.sh script
 tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa
 	@./scripts/make/status.sh "MAKING CONFIGURED PETALINUX PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
-	source $(PETALINUX_PATH)/settings.sh && \
-		scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT) && \
-		scripts/petalinux/software.sh $(BOARD) $(BOARD_VER) $(PROJECT) && \
-		scripts/petalinux/kernel_modules.sh $(BOARD) $(BOARD_VER) $(PROJECT)
+	scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT)
+	scripts/petalinux/software.sh $(BOARD) $(BOARD_VER) $(PROJECT)
+	scripts/petalinux/kernel_modules.sh $(BOARD) $(BOARD_VER) $(PROJECT)
 
 # The compressed root filesystem
 # Requires the PetaLinux project

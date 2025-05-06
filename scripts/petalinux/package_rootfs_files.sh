@@ -17,8 +17,8 @@ set --
 # If any subsequent command fails, exit immediately
 set -e
 
-# Check the project source
-./scripts/check/project_src.sh ${BRD} ${VER} ${PRJ} || exit 1
+# Check the project directory
+./scripts/check/project_dir.sh ${BRD} ${VER} ${PRJ} || exit 1
 # Check if there are any files to package
 if [ ! -d "projects/${PRJ}/rootfs_include" ]; then
   echo "[PTLNX ROOTFS PKG] No files to package in the root filesystem for ${PBV}"

@@ -2,26 +2,32 @@
 # This script reads a tcl block design file and extracts the paths of user cores instantiated with the "cell" procedure.
 # The script can recurse into tcl files sourced by the "module" procedure.
 
-# Check if a file is provided as an argument
+# Check if two arguments are provided
 if [ $# -ne 1 ]; then
   echo "Usage: $0 <file>"
   exit 1
 fi
 
+# Assign arguments to variables
+file="$1"
+
 # Check if the file exists
-if [ ! -f "$1" ]; then
-  echo "File not found: $1"
+if [ ! -f "$file" ]; then
+  echo "File not found: $file"
   exit 1
 fi
 
-# Pull out the cores from the tcl file
+# Pull out the project name from the file path (file will be formatted as projects/<project_name>/...tcl)
+project=$(echo "$file" | cut -d'/' -f2)
 
+
+## Pull out the cores from the tcl file
 # Initialize the list of paths to IP source file locations
 paths=()
 # Read the file line by line to capture paths
 while IFS= read -r line; do
-  # Capture the name of any IPs instantiated with the "cell" procedure
-  if [[ $line == cell* ]]; then
+  # Capture the name of any IPs instantiated with the "cell" procedure (allow leading whitespace)
+  if [[ $line =~ ^[[:space:]]*cell ]]; then
     words=($line)
 
     # Check that the line has at least 2 words
@@ -51,17 +57,22 @@ while IFS= read -r line; do
       paths+=("${parts[0]}/${parts[2]}")
     fi
 
-  # Otherwise, if the line is a module, call the script recursively on the tcl script sourced by the module
-  elif [[ $line == module* ]]; then
-    next_line=$(IFS= read -r next_line; echo "$next_line")
-    words=($next_line)
+  # Otherwise, if the line is a module (allow leading whitespace), 
+  #  call the script recursively on the tcl script sourced by the module
+  elif [[ $line =~ ^[[:space:]]*module ]]; then
+    words=($line)
 
-    # Check the formatting/validity of the module line
-    if [[ ${words[0]} != "source" ]]; then
-      echo "Invalid module format: $next_line"
+    # Check that the line has at least 3 words
+    if [ ${#words[@]} -lt 3 ]; then
+      echo "Invalid module format: $line"
       exit 1
     fi
-    module_file="${words[1]}"
+
+    # Extract the module name and file path
+    module_name="${words[1]}"
+    module_file="projects/${project}/modules/${module_name}.tcl"
+
+    # Check if the module file exists
     if [ ! -f "$module_file" ]; then
       echo "Module file not found: $module_file"
       exit 1
@@ -69,11 +80,10 @@ while IFS= read -r line; do
 
     # Call the script recursively on the module file
     output=$($0 "$module_file")
-    return_code=$?
 
     # Check if the return code is non-zero
-    if [ $return_code -ne 0 ]; then
-      echo "Error executing script: $module_file"
+    if [ $? -ne 0 ]; then
+      echo "Error when parsing $module_file"
       exit 1
     fi
 
@@ -85,7 +95,7 @@ while IFS= read -r line; do
       paths+=("$word")
     done
   fi
-done < "$1"
+done < "$file"
 
 # Sort the list of paths
 IFS=$'\n' paths=($(sort <<<"${paths[*]}"))

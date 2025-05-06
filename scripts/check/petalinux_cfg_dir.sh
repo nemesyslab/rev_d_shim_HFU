@@ -30,8 +30,8 @@ if $FULL_CHECK; then
   # Full check: PetaLinux environment and prerequisites
   ./scripts/check/petalinux_env.sh ${BRD} ${VER} ${PRJ} --full
 else
-  # Minimum check: Project source and PetaLinux environment
-  ./scripts/check/project_src.sh ${BRD} ${VER} ${PRJ}
+  # Minimum check: Project directory and PetaLinux environment
+  ./scripts/check/project_dir.sh ${BRD} ${VER} ${PRJ}
   ./scripts/check/petalinux_env.sh ${BRD} ${VER} ${PRJ}
 fi
 

@@ -139,14 +139,23 @@ proc init_ps {ps_name {ps_props {}} {ps_conn {}}} {
 }
 
 # Procedure for creating a module from a tcl section
+#  module_src:  name of the TCL source file to include
 #  module_name: name of the module
-#  module_body: body of the module (can just be a source command to another tcl file)
 #  module_conn: dictionary of pins to wire (put the local name first)
-proc module {module_name module_body {module_conn {}}} {
-  set instance [current_bd_instance .]
+proc module {module_src module_name {module_conn {}}} {
+  global project_name
+  set upper_instance [current_bd_instance .]
   current_bd_instance [create_bd_cell -type hier $module_name]
-  eval $module_body
-  current_bd_instance $instance
+  
+  # Check if the module source file exists
+  if {![file exists projects/${project_name}/modules/${module_src}.tcl]} {
+    error "Module source file projects/${project_name}/modules/${module_src}.tcl does not exist."
+  }
+  
+  # Include the module source file
+  source projects/$project_name/modules/${module_src}.tcl
+
+  current_bd_instance $upper_instance
 
   # Wire the local pins externally
   foreach {local_name remote_name} [uplevel 1 [list subst $module_conn]] {

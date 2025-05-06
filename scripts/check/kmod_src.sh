@@ -77,6 +77,4 @@ if [ -f "${KERNEL_MODULES_FILE}" ]; then
       exit 1
     fi
   done <"${KERNEL_MODULES_FILE}"
-else
-  echo "[CHECK KERNEL MODULES] INFO: No kernel_modules file found. Skipping kernel module checks."
 fi

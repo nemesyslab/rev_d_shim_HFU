@@ -257,11 +257,11 @@ tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PRO
 # Built using the scripts/petalinux/project.sh script
 tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa projects/$(PROJECT)/cfg/$(BOARD)/$(BOARD_VER)/petalinux/$(PETALINUX_VERSION)/config.patch projects/$(PROJECT)/cfg/$(BOARD)/$(BOARD_VER)/petalinux/$(PETALINUX_VERSION)/rootfs_config.patch
 	@./scripts/make/status.sh "MAKING CONFIGURED PETALINUX PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
-	@if [ $(OFFLINE) ]; then scripts/make/status.sh "PetaLinux OFFLINE build"; fi
+	@if [ $(OFFLINE) = "true" ]; then scripts/make/status.sh "PetaLinux OFFLINE build"; fi
 	scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT)
 	scripts/petalinux/software.sh $(BOARD) $(BOARD_VER) $(PROJECT)
 	scripts/petalinux/kernel_modules.sh $(BOARD) $(BOARD_VER) $(PROJECT)
-	@if [ $(OFFLINE) ]; then scripts/petalinux/make_offline.sh $(BOARD) $(BOARD_VER) $(PROJECT); fi
+	@if [ $(OFFLINE) = "true" ]; then scripts/petalinux/make_offline.sh $(BOARD) $(BOARD_VER) $(PROJECT); fi
 	
 
 # The compressed root filesystem

@@ -17,12 +17,14 @@ set --
 # If any subsequent command fails, exit immediately
 set -e
 
+echo "[PTLNX OFFLINE] Setting PetaLinux project for ${PBV} up for offline build"
 # Check that the PetaLinux project exists
 ./scripts/check/petalinux_project.sh ${BRD} ${VER} ${PRJ}
 ./scripts/check/petalinux_offline.sh ${BRD} ${VER} ${PRJ}
 
 # Set config file path
 cfg_file="tmp/$BRD/$VER/$PRJ/petalinux/project-spec/configs/config"
+
 
 # Get the first line with CONFIG_PRE_MIRROR_URL=".*"
 line_n=$(grep -nG "CONFIG_PRE_MIRROR_URL=\".*\"" $cfg_file | head -1 | cut -d : -f 1)

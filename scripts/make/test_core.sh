@@ -2,7 +2,7 @@
 # Build a PetaLinux project for the given board and project
 # Arguments: <vendor> <core>
 if [ $# -ne 2 ]; then
-  echo "[CORE TEST SCRIPT] ERROR:"
+  echo "[CORE TESTS] ERROR:"
   echo "Usage: $0 <vendor> <core>"
   exit 1
 fi

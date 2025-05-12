@@ -50,7 +50,7 @@ fi
 if [[ "$PETALINUX_VERSION" =~ ^([0-9]{4}) ]]; then
   PETALINUX_YEAR=${BASH_REMATCH[1]}
 else
-  echo "[PTLNX PROJ SCRIPT] ERROR: Invalid PetaLinux version format (${PETALINUX_VERSION}). Expected format: YYYY.X"
+  echo "[PTLNX BOOT PKG] ERROR: Invalid PetaLinux version format (${PETALINUX_VERSION}). Expected format: YYYY.X"
   exit 1
 fi
 

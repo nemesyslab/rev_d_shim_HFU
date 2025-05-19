@@ -16,10 +16,8 @@ module spi_sts_sync (
   input  wire [7:0]  adc_thresh_overflow,
   input  wire [7:0]  dac_buf_underflow,
   input  wire [7:0]  adc_buf_overflow,
-  input  wire [7:0]  premat_dac_trig,
-  input  wire [7:0]  premat_adc_trig,
-  input  wire [7:0]  premat_dac_div,
-  input  wire [7:0]  premat_adc_div,
+  input  wire [7:0]  unexp_dac_trig,
+  input  wire [7:0]  unexp_adc_trig,
 
   // Synchronized outputs to AXI domain
   output reg         spi_running_stable,
@@ -31,10 +29,8 @@ module spi_sts_sync (
   output reg  [7:0]  adc_thresh_overflow_stable,
   output reg  [7:0]  dac_buf_underflow_stable,
   output reg  [7:0]  adc_buf_overflow_stable,
-  output reg  [7:0]  premat_dac_trig_stable,
-  output reg  [7:0]  premat_adc_trig_stable,
-  output reg  [7:0]  premat_dac_div_stable,
-  output reg  [7:0]  premat_adc_div_stable
+  output reg  [7:0]  unexp_dac_trig_stable,
+  output reg  [7:0]  unexp_adc_trig_stable
 );
 
   // Intermediate wires for synchronized signals
@@ -47,10 +43,8 @@ module spi_sts_sync (
   wire [7:0] adc_thresh_overflow_sync;
   wire [7:0] dac_buf_underflow_sync;
   wire [7:0] adc_buf_overflow_sync;
-  wire [7:0] premat_dac_trig_sync;
-  wire [7:0] premat_adc_trig_sync;
-  wire [7:0] premat_dac_div_sync;
-  wire [7:0] premat_adc_div_sync;
+  wire [7:0] unexp_dac_trig_sync;
+  wire [7:0] unexp_adc_trig_sync;
 
   // Stability signals for each synchronizer
   wire spi_running_stable_flag;
@@ -62,10 +56,8 @@ module spi_sts_sync (
   wire adc_thresh_overflow_stable_flag;
   wire dac_buf_underflow_stable_flag;
   wire adc_buf_overflow_stable_flag;
-  wire premat_dac_trig_stable_flag;
-  wire premat_adc_trig_stable_flag;
-  wire premat_dac_div_stable_flag;
-  wire premat_adc_div_stable_flag;
+  wire unexp_dac_trig_stable_flag;
+  wire unexp_adc_trig_stable_flag;
 
   // Synchronize each signal using the synchronizer module
   synchronizer #(
@@ -180,48 +172,24 @@ module spi_sts_sync (
     .DEPTH(3),
     .WIDTH(8),
     .STABLE_COUNT(2)
-  ) sync_premat_dac_trig (
+  ) sync_unexp_dac_trig (
     .clk(clk),
     .rst(rst),
-    .din(premat_dac_trig),
-    .dout(premat_dac_trig_sync),
-    .stable(premat_dac_trig_stable_flag)
+    .din(unexp_dac_trig),
+    .dout(unexp_dac_trig_sync),
+    .stable(unexp_dac_trig_stable_flag)
   );
 
   synchronizer #(
     .DEPTH(3),
     .WIDTH(8),
     .STABLE_COUNT(2)
-  ) sync_premat_adc_trig (
+  ) sync_unexp_adc_trig (
     .clk(clk),
     .rst(rst),
-    .din(premat_adc_trig),
-    .dout(premat_adc_trig_sync),
-    .stable(premat_adc_trig_stable_flag)
-  );
-
-  synchronizer #(
-    .DEPTH(3),
-    .WIDTH(8),
-    .STABLE_COUNT(2)
-  ) sync_premat_dac_div (
-    .clk(clk),
-    .rst(rst),
-    .din(premat_dac_div),
-    .dout(premat_dac_div_sync),
-    .stable(premat_dac_div_stable_flag)
-  );
-
-  synchronizer #(
-    .DEPTH(3),
-    .WIDTH(8),
-    .STABLE_COUNT(2)
-  ) sync_premat_adc_div (
-    .clk(clk),
-    .rst(rst),
-    .din(premat_adc_div),
-    .dout(premat_adc_div_sync),
-    .stable(premat_adc_div_stable_flag)
+    .din(unexp_adc_trig),
+    .dout(unexp_adc_trig_sync),
+    .stable(unexp_adc_trig_stable_flag)
   );
 
   // Update stable registers for each signal individually
@@ -236,10 +204,8 @@ module spi_sts_sync (
       adc_thresh_overflow_stable  <= 8'b0;
       dac_buf_underflow_stable    <= 8'b0;
       adc_buf_overflow_stable     <= 8'b0;
-      premat_dac_trig_stable      <= 8'b0;
-      premat_adc_trig_stable      <= 8'b0;
-      premat_dac_div_stable       <= 8'b0;
-      premat_adc_div_stable       <= 8'b0;
+      unexp_dac_trig_stable      <= 8'b0;
+      unexp_adc_trig_stable      <= 8'b0;
     end else begin
       if (spi_running_stable_flag)
         spi_running_stable <= spi_running_sync;
@@ -259,14 +225,11 @@ module spi_sts_sync (
         dac_buf_underflow_stable <= dac_buf_underflow_sync;
       if (adc_buf_overflow_stable_flag)
         adc_buf_overflow_stable <= adc_buf_overflow_sync;
-      if (premat_dac_trig_stable_flag)
-        premat_dac_trig_stable <= premat_dac_trig_sync;
-      if (premat_adc_trig_stable_flag)
-        premat_adc_trig_stable <= premat_adc_trig_sync;
-      if (premat_dac_div_stable_flag)
-        premat_dac_div_stable <= premat_dac_div_sync;
-      if (premat_adc_div_stable_flag)
-        premat_adc_div_stable <= premat_adc_div_sync;
+      if (unexp_dac_trig_stable_flag)
+        unexp_dac_trig_stable <= unexp_dac_trig_sync;
+      if (unexp_adc_trig_stable_flag)
+        unexp_adc_trig_stable <= unexp_adc_trig_sync;
     end
   end
 endmodule
+

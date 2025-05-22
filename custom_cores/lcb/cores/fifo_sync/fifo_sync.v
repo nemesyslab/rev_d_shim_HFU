@@ -1,4 +1,4 @@
-module sync_fifo #(
+module fifo_sync #(
     parameter DATA_WIDTH = 16,
     parameter ADDR_WIDTH = 4,  // FIFO depth = 2^ADDR_WIDTH
     parameter ALMOST_FULL_THRESHOLD = 2, // Adjust as needed

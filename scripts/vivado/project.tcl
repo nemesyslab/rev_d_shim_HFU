@@ -69,7 +69,7 @@ update_ip_catalog
 # var_name: name of the loop variable (e.g. i)
 # var_list: list of values to loop over (e.g. {1 2 3 4 5 6 7 8})
 # pin_1_expr: Tcl code to generate the first pin, using $var_name (e.g. {In[expr {$i-1}]})
-# pin_2_expr: Tcl code to generate the second pin, using $var_name (e.g. {dac_ch${i}_n_cs})
+# pin_2_expr: Tcl code to generate the second pin, using $var_name (e.g. {dac_ch${i}/n_cs})
 proc loop_pins {var_name var_list pin_1_expr pin_2_expr} {
   set result {}
   foreach $var_name $var_list {

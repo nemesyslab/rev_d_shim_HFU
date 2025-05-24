@@ -26,13 +26,10 @@ The `hw_manager` module manages the hardware system's startup, operation, and sh
 - **Shutdown Sense**
   - `shutdown_sense [7:0]`: Shutdown sense signals (per board).
 
-- **DAC/ADC Thresholds**
-  - `dac_over_thresh [7:0]`: DAC over-threshold (per board).
-  - `adc_over_thresh [7:0]`: ADC over-threshold (per board).
-  - `dac_thresh_underflow [7:0]`: DAC threshold FIFO underflow (per board).
-  - `dac_thresh_overflow [7:0]`: DAC threshold FIFO overflow (per board).
-  - `adc_thresh_underflow [7:0]`: ADC threshold FIFO underflow (per board).
-  - `adc_thresh_overflow [7:0]`: ADC threshold FIFO overflow (per board).
+- **Integrator Status**
+  - `over_thresh [7:0]`: DAC over-threshold (per board).
+  - `thresh_underflow [7:0]`: DAC threshold FIFO underflow (per board).
+  - `thresh_overflow [7:0]`: DAC threshold FIFO overflow (per board).
 
 - **DAC/ADC Buffers**
   - `dac_buf_underflow [7:0]`: DAC buffer underflow (per board).
@@ -68,7 +65,7 @@ The `hw_manager` module manages the hardware system's startup, operation, and sh
 - **RELEASE_SD_F**: Releases shutdown force (`n_shutdown_force` high) and waits for `SHUTDOWN_FORCE_DELAY`.
 - **PULSE_SD_RST**: Pulses `n_shutdown_rst` low for `SHUTDOWN_RESET_PULSE`, then sets it high again.
 - **SD_RST_DELAY**: Waits for `SHUTDOWN_RESET_DELAY` after pulsing shutdown reset, then enables shutdown sense, powers up SPI clock, and enables SPI.
-- **START_SPI**: Waits for the SPI subsystem to start (`spi_running`). If not started within `SPI_START_WAIT`, transitions to HALTED with a timeout status. If started, enables triggers and asserts `ps_interrupt`.
+- **CONFIRM_SPI_START**: Waits for the SPI subsystem to start (`spi_off` deasserted). If not started within `SPI_START_WAIT`, transitions to HALTED with a timeout status. If started, enables triggers and asserts `ps_interrupt`.
 - **RUNNING**: Normal operation. Continuously monitors for halt conditions. If any error or shutdown condition occurs, transitions to HALTED, disables outputs, and asserts `ps_interrupt`.
 - **HALTED**: Waits for `sys_en` to go low, then returns to IDLE and clears status.
 
@@ -78,10 +75,10 @@ The system transitions to HALTED and sets the appropriate status code if any of 
 - `sys_en` goes low (processing system shutdown)
 - Configuration lock violation (`lock_viol`)
 - Shutdown detected via `shutdown_sense` or `ext_shutdown`
-- DAC/ADC thresholds exceeded or underflow/overflow conditions
+- Integrator thresholds exceeded or hardware error underflow/overflow conditions
 - DAC/ADC buffers experience underflow or overflow
 - Premature DAC/ADC triggers occur
-- SPI subsystem fails to start within timeout
+- SPI subsystem fails to start or initialize within timeout
 
 ### Status Word Format
 
@@ -104,24 +101,18 @@ The 32-bit `status_word` is formatted as:
 - `8`: STATUS_LOCK_VIOL - Configuration lock violation.
 - `9`: STATUS_SHUTDOWN_SENSE - Shutdown sense detected.
 - `10`: STATUS_EXT_SHUTDOWN - External shutdown triggered.
-- `11`: STATUS_DAC_OVER_THRESH - DAC over threshold.
-- `12`: STATUS_ADC_OVER_THRESH - ADC over threshold.
-- `13`: STATUS_DAC_THRESH_UNDERFLOW - DAC threshold FIFO underflow.
-- `14`: STATUS_DAC_THRESH_OVERFLOW - DAC threshold FIFO overflow.
-- `15`: STATUS_ADC_THRESH_UNDERFLOW - ADC threshold FIFO underflow.
-- `16`: STATUS_ADC_THRESH_OVERFLOW - ADC threshold FIFO overflow.
-- `17`: STATUS_DAC_BUF_UNDERFLOW - DAC buffer underflow.
-- `18`: STATUS_DAC_BUF_OVERFLOW - DAC buffer overflow.
-- `19`: STATUS_ADC_BUF_UNDERFLOW - ADC buffer underflow.
-- `20`: STATUS_ADC_BUF_OVERFLOW - ADC buffer overflow.
-- `21`: STATUS_UNEXP_DAC_TRIG - Unexpected DAC trigger.
-- `22`: STATUS_UNEXP_ADC_TRIG - Unexpected ADC trigger.
-- `23`: STATUS_SPI_START_TIMEOUT - SPI start timeout.
-- `24`: STATUS_SPI_INIT_TIMEOUT - SPI initialization timeout.
+- `11`: STATUS_OVER_THRESH - DAC over threshold.
+- `12`: STATUS_THRESH_UNDERFLOW - DAC threshold FIFO underflow.
+- `13`: STATUS_THRESH_OVERFLOW - DAC threshold FIFO overflow.
+- `14`: STATUS_DAC_BUF_UNDERFLOW - DAC buffer underflow.
+- `15`: STATUS_DAC_BUF_OVERFLOW - DAC buffer overflow.
+- `16`: STATUS_ADC_BUF_UNDERFLOW - ADC buffer underflow.
+- `17`: STATUS_ADC_BUF_OVERFLOW - ADC buffer overflow.
+- `18`: STATUS_UNEXP_DAC_TRIG - Unexpected DAC trigger.
+- `19`: STATUS_UNEXP_ADC_TRIG - Unexpected ADC trigger.
+- `20`: STATUS_SPI_START_TIMEOUT - SPI start timeout.
+- `21`: STATUS_SPI_INIT_TIMEOUT - SPI initialization timeout.
 
 ## Board Number Extraction
 
 For error/status signals that are 8 bits wide (per board), the board number is extracted as the index of the first asserted bit.
-
----
-This specification matches the implementation in `hw_manager.v` as of this revision.

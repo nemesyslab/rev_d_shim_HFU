@@ -26,12 +26,9 @@ module hw_manager #(
   // Shutdown sense
   input   wire  [ 7:0]  shutdown_sense, // Shutdown sense (per board)
   // Integrator
-  input   wire  [ 7:0]  dac_over_thresh, // DAC over threshold (per board)
-  input   wire  [ 7:0]  adc_over_thresh, // ADC over threshold (per board)
-  input   wire  [ 7:0]  dac_thresh_underflow, // DAC threshold core FIFO underflow (per board)
-  input   wire  [ 7:0]  dac_thresh_overflow,  // DAC threshold core FIFO overflow (per board)
-  input   wire  [ 7:0]  adc_thresh_underflow, // ADC threshold core FIFO underflow (per board)
-  input   wire  [ 7:0]  adc_thresh_overflow,  // ADC threshold core FIFO overflow (per board)
+  input   wire  [ 7:0]  over_thresh,      // DAC over threshold (per board)
+  input   wire  [ 7:0]  thresh_underflow, // DAC threshold core FIFO underflow (per board)
+  input   wire  [ 7:0]  thresh_overflow,  // DAC threshold core FIFO overflow (per board)
   // DAC/ADC
   input   wire  [ 7:0]  dac_buf_underflow, // DAC buffer underflow (per board)
   input   wire  [ 7:0]  dac_buf_overflow,  // DAC buffer overflow (per board)
@@ -82,20 +79,17 @@ module hw_manager #(
               STATUS_LOCK_VIOL            = 25'd8,
               STATUS_SHUTDOWN_SENSE       = 25'd9,
               STATUS_EXT_SHUTDOWN         = 25'd10,
-              STATUS_DAC_OVER_THRESH      = 25'd11,
-              STATUS_ADC_OVER_THRESH      = 25'd12,
-              STATUS_DAC_THRESH_UNDERFLOW = 25'd13,
-              STATUS_DAC_THRESH_OVERFLOW  = 25'd14,
-              STATUS_ADC_THRESH_UNDERFLOW = 25'd15,
-              STATUS_ADC_THRESH_OVERFLOW  = 25'd16,
-              STATUS_DAC_BUF_UNDERFLOW    = 25'd17,
-              STATUS_DAC_BUF_OVERFLOW     = 25'd18,
-              STATUS_ADC_BUF_UNDERFLOW    = 25'd19,
-              STATUS_ADC_BUF_OVERFLOW     = 25'd20,
-              STATUS_UNEXP_DAC_TRIG       = 25'd21,
-              STATUS_UNEXP_ADC_TRIG       = 25'd22,
-              STATUS_SPI_START_TIMEOUT    = 25'd23,
-              STATUS_SPI_INIT_TIMEOUT     = 25'd24;
+              STATUS_OVER_THRESH          = 25'd11,
+              STATUS_THRESH_UNDERFLOW     = 25'd12,
+              STATUS_THRESH_OVERFLOW      = 25'd13,
+              STATUS_DAC_BUF_UNDERFLOW    = 25'd14,
+              STATUS_DAC_BUF_OVERFLOW     = 25'd15,
+              STATUS_ADC_BUF_UNDERFLOW    = 25'd16,
+              STATUS_ADC_BUF_OVERFLOW     = 25'd17,
+              STATUS_UNEXP_DAC_TRIG       = 25'd18,
+              STATUS_UNEXP_ADC_TRIG       = 25'd19,
+              STATUS_SPI_START_TIMEOUT    = 25'd20,
+              STATUS_SPI_INIT_TIMEOUT     = 25'd21;
 
   // Main state machine
   always @(posedge clk) begin
@@ -266,12 +260,9 @@ module hw_manager #(
               || lock_viol
               || shutdown_sense 
               || ext_shutdown 
-              || dac_over_thresh 
-              || adc_over_thresh 
-              || dac_thresh_underflow 
-              || dac_thresh_overflow 
-              || adc_thresh_underflow 
-              || adc_thresh_overflow 
+              || over_thresh 
+              || thresh_underflow 
+              || thresh_overflow 
               || dac_buf_underflow 
               || dac_buf_overflow 
               || adc_buf_underflow 
@@ -306,40 +297,22 @@ module hw_manager #(
             else if (ext_shutdown) status_code <= STATUS_EXT_SHUTDOWN;
 
             // DAC over threshold
-            else if (dac_over_thresh) begin
-              status_code <= STATUS_DAC_OVER_THRESH;
-              board_num <= extract_board_num(dac_over_thresh);
-            end // if (dac_over_thresh)
-
-            // ADC over threshold
-            else if (adc_over_thresh) begin
-              status_code <= STATUS_ADC_OVER_THRESH;
-              board_num <= extract_board_num(adc_over_thresh);
-            end // if (adc_over_thresh)
+            else if (over_thresh) begin
+              status_code <= STATUS_OVER_THRESH;
+              board_num <= extract_board_num(over_thresh);
+            end // if (over_thresh)
 
             // DAC threshold core FIFO underflow
-            else if (dac_thresh_underflow) begin
-              status_code <= STATUS_DAC_THRESH_UNDERFLOW;
-              board_num <= extract_board_num(dac_thresh_underflow);
-            end // if (dac_thresh_underflow)
+            else if (thresh_underflow) begin
+              status_code <= STATUS_THRESH_UNDERFLOW;
+              board_num <= extract_board_num(thresh_underflow);
+            end // if (thresh_underflow)
 
             // DAC threshold core FIFO overflow
-            else if (dac_thresh_overflow) begin
-              status_code <= STATUS_DAC_THRESH_OVERFLOW;
-              board_num <= extract_board_num(dac_thresh_overflow);
-            end // if (dac_thresh_overflow)
-
-            // ADC threshold core FIFO underflow
-            else if (adc_thresh_underflow) begin
-              status_code <= STATUS_ADC_THRESH_UNDERFLOW;
-              board_num <= extract_board_num(adc_thresh_underflow);
-            end // if (adc_thresh_underflow)
-
-            // ADC threshold core FIFO overflow
-            else if (adc_thresh_overflow) begin
-              status_code <= STATUS_ADC_THRESH_OVERFLOW;
-              board_num <= extract_board_num(adc_thresh_overflow);
-            end // if (adc_thresh_overflow)
+            else if (thresh_overflow) begin
+              status_code <= STATUS_THRESH_OVERFLOW;
+              board_num <= extract_board_num(thresh_overflow);
+            end // if (thresh_overflow)
 
             // DAC buffer underflow
             else if (dac_buf_underflow) begin

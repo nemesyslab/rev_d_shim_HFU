@@ -1,5 +1,6 @@
 # Ignore Vivado generated files
 tmp
+tmp_reports
 out
 .vscode
 .Xil

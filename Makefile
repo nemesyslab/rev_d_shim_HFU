@@ -129,6 +129,7 @@ clean:
 	@./scripts/make/status.sh "CLEANING"
 	$(RM) .Xil
 	$(RM) tmp
+	$(RM) tmp_reports
 
 # Remove all the output files too
 clean_all: clean
@@ -251,6 +252,8 @@ tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/bitstream.bit: tmp/$(BOARD)/$(BOARD_VER)/$(
 tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr
 	@./scripts/make/status.sh "MAKING HW DEF: $(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa"
 	$(VIVADO) -source scripts/vivado/hw_def.tcl -tclargs $(BOARD)/$(BOARD_VER)/$(PROJECT)
+	@./scripts/make/status.sh "WRITING UTILIZATION: $(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa"
+	$(VIVADO) -source scripts/vivado/utilization.tcl -tclargs $(BOARD)/$(BOARD_VER)/$(PROJECT)
 
 # The PetaLinux project
 # Requires the hardware definition file

@@ -2,14 +2,14 @@
 
 module threshold_integrator (
   // Inputs
-  input   wire         clk               ,
-  input   wire         aresetn           ,
-  input   wire         enable            ,
-  input   wire [ 31:0] window            ,
-  input   wire [ 14:0] threshold_average ,
-  input   wire         sample_core_done  ,
-  input   wire [127:0] value_in_concat   ,
-  input   wire [  7:0] value_ready_concat,
+  input   wire         clk                ,
+  input   wire         aresetn            ,
+  input   wire         enable             ,
+  input   wire [ 31:0] window             ,
+  input   wire [ 14:0] threshold_average  ,
+  input   wire         sample_core_done   ,
+  input   wire [119:0] abs_value_in_concat,
+  input   wire [  7:0] value_ready_concat ,
 
   // Outputs
   output  reg         err_overflow  ,
@@ -19,18 +19,13 @@ module threshold_integrator (
 );
 
   //// Internal signals
-  wire[15:0] value_in   [7:0];
+  wire[14:0] value_in   [7:0];
   wire       value_ready[7:0];
-  reg [47:0] max_value               ;
-  reg [ 4:0] chunk_size              ;
-  reg [24:0] chunk_mask              ;
+  reg [43:0] max_value               ;
   reg [ 4:0] sample_size             ;
-  reg [19:0] sample_mask             ;
-  reg [ 2:0] sub_average_size        ;
-  reg [ 4:0] sub_average_mask        ;
-  reg [ 4:0] inflow_sub_average_timer;
-  reg [19:0] inflow_sample_timer     ;
-  reg [24:0] outflow_timer           ;
+  reg [24:0] sample_mask             ;
+  reg [24:0] inflow_sample_timer     ;
+  reg [31:0] outflow_timer           ;
   reg [ 3:0] fifo_in_queue_count     ;
   reg [35:0] fifo_din                ;
   wire       fifo_full               ;
@@ -42,18 +37,18 @@ module threshold_integrator (
   wire       rd_en                   ;
   wire[ 7:0] channel_over_threshold  ;
   reg [ 2:0] state                   ;
-  reg [15:0] inflow_value               [ 7:0];
-  reg [21:0] sub_average_sum            [ 7:0];
+  reg [14:0] inflow_value               [ 7:0];
   reg [35:0] inflow_sample_sum          [ 7:0];
   reg [35:0] queued_fifo_in_sample_sum  [ 7:0];
   reg [35:0] queued_fifo_out_sample_sum [ 7:0];
-  reg [15:0] outflow_value              [ 7:0];
+  reg [14:0] outflow_value              [ 7:0];
+  reg [15:0] outflow_value_plus_one     [ 7:0];
   reg [19:0] outflow_remainder          [ 7:0];
-  reg signed [17:0] sum_delta   [ 7:0];
-  reg signed [48:0] total_sum   [ 7:0];
+  reg signed [16:0] sum_delta   [ 7:0];
+  reg signed [44:0] total_sum   [ 7:0];
 
   // Registers for shift-add multiplication
-  reg [47:0] window_reg;
+  reg [43:0] window_reg;
   reg [14:0] threshold_average_shift;
   reg [ 4:0] max_value_mult_cnt;
 
@@ -98,13 +93,8 @@ module threshold_integrator (
     if (~aresetn) begin : reset_logic
       // Zero all individual signals
       max_value <= 0;
-      chunk_size <= 0;
-      chunk_mask <= 0;
       sample_size <= 0;
       sample_mask <= 0;
-      sub_average_size <= 0;
-      sub_average_mask <= 0;
-      inflow_sub_average_timer <= 0;
       inflow_sample_timer <= 0;
       outflow_timer <= 0;
       fifo_in_queue_count <= 0;
@@ -132,54 +122,54 @@ module threshold_integrator (
           if (enable) begin
             // Calculate chunk_size (MSB of window - 6)
             if (window[31]) begin
-              chunk_size <= 25;
+              sample_size <= 21;
             end else if (window[30]) begin
-              chunk_size <= 24;
+              sample_size <= 20;
             end else if (window[29]) begin
-              chunk_size <= 23;
+              sample_size <= 19;
             end else if (window[28]) begin
-              chunk_size <= 22;
+              sample_size <= 18;
             end else if (window[27]) begin
-              chunk_size <= 21;
+              sample_size <= 17;
             end else if (window[26]) begin
-              chunk_size <= 20;
+              sample_size <= 16;
             end else if (window[25]) begin
-              chunk_size <= 19;
+              sample_size <= 15;
             end else if (window[24]) begin
-              chunk_size <= 18;
+              sample_size <= 14;
             end else if (window[23]) begin
-              chunk_size <= 17;
+              sample_size <= 13;
             end else if (window[22]) begin
-              chunk_size <= 16;
+              sample_size <= 12;
             end else if (window[21]) begin
-              chunk_size <= 15;
+              sample_size <= 11;
             end else if (window[20]) begin
-              chunk_size <= 14;
+              sample_size <= 10;
             end else if (window[19]) begin
-              chunk_size <= 13;
+              sample_size <= 9;
             end else if (window[18]) begin
-              chunk_size <= 12;
+              sample_size <= 8;
             end else if (window[17]) begin
-              chunk_size <= 11;
+              sample_size <= 7;
             end else if (window[16]) begin
-              chunk_size <= 10;
+              sample_size <= 6;
             end else if (window[15]) begin
-              chunk_size <= 9;
+              sample_size <= 5;
             end else if (window[14]) begin
-              chunk_size <= 8;
+              sample_size <= 4;
             end else if (window[13]) begin
-              chunk_size <= 7;
+              sample_size <= 3;
             end else if (window[12]) begin
-              chunk_size <= 6;
+              sample_size <= 2;
             end else if (window[11]) begin
-              chunk_size <= 5;
+              sample_size <= 1;
             end else begin // Disallowed size of window
               over_threshold <= 1;
               state <= OUT_OF_BOUNDS;
             end
 
             // Prepare for shift-add multiplication in SETUP
-            window_reg <= window;
+            window_reg <= window >> 4; // Only adding every 16th clock cycle
             threshold_average_shift <= threshold_average;
             max_value_mult_cnt <= 0;
 
@@ -196,9 +186,8 @@ module threshold_integrator (
             end
             threshold_average_shift <= threshold_average_shift >> 1;
             max_value_mult_cnt <= max_value_mult_cnt + 1;
-          end else begin // Finished shift-add multiplication, calculate sample size and go to WAIT for sample core
-            sub_average_size <= (chunk_size > 20) ? (chunk_size - 20) : 0;
-            sample_size <= (chunk_size > 20) ? 20 : chunk_size;
+          end else begin // Finished shift-add multiplication, set sample size mask and go to WAIT for sample core
+            sample_mask <= (25'b1 << sample_size) - 1;
             state <= WAIT;
           end
         end // SETUP
@@ -206,13 +195,8 @@ module threshold_integrator (
         // WAIT state, waiting for sample core (DAC/ADC) to finish setting up
         WAIT: begin
           if (sample_core_done) begin
-            // Calculate masks
-            chunk_mask <= (1 << chunk_size) - 1;
-            sample_mask <= (1 << sample_size) - 1;
-            sub_average_mask <= (1 << sub_average_size) - 1;
             // Initialize timers
-            inflow_sub_average_timer <= (1 << sub_average_size) - 1;
-            inflow_sample_timer <= (1 << sample_size) - 1;
+            inflow_sample_timer <= sample_mask << 4;
             outflow_timer <= window - 1;
             setup_done <= 1;
             state <= RUNNING;
@@ -239,17 +223,10 @@ module threshold_integrator (
           end
 
           // Inflow timers
-          if (inflow_sub_average_timer != 0) begin // Sub-average timer
-            inflow_sub_average_timer <= inflow_sub_average_timer - 1;
-          end else begin
-            inflow_sub_average_timer <= sub_average_mask;
-            if (inflow_sample_timer != 0) begin // Sample timer
-              inflow_sample_timer <= inflow_sample_timer - 1;
-            end else begin
-              inflow_sample_timer <= sample_mask;
-              fifo_in_queue_count <= 8;
-            end
-          end // Inflow timers
+          if (inflow_sample_timer == 0) begin // Reset inflow sample timer
+            inflow_sample_timer <= sample_mask << 4;
+            fifo_in_queue_count <= 8;
+          end
 
           // Inflow FIFO counter
           if (fifo_in_queue_count != 0) begin
@@ -259,12 +236,12 @@ module threshold_integrator (
 
           // Outflow timer
           if (outflow_timer != 0) begin
-            outflow_timer <= outflow_timer - 1;
             if (outflow_timer == 16) begin // Initiate FIFO popping to queue
               fifo_out_queue_count <= 8;
             end
+            outflow_timer <= outflow_timer - 1;
           end else begin
-            outflow_timer <= chunk_mask;
+            outflow_timer <= sample_mask << 4;
           end // Outflow timer
 
           // Outflow FIFO counters (index 1-delayed from fifo_out_queue_count to allow for 1-cycle read delay)
@@ -292,7 +269,7 @@ module threshold_integrator (
   genvar i;
   generate // Per-channel logic generate
     for (i = 0; i < 8; i = i + 1) begin : channel_loop
-      assign value_in[i] = value_in_concat[16 * (i + 1) - 1 -: 16];
+      assign value_in[i] = abs_value_in_concat[15 * (i + 1) - 1 -: 15];
       assign value_ready[i] = value_ready_concat[i];
       assign channel_over_threshold[i] = (total_sum[i] > max_value) ? 1 : 0;
 
@@ -300,31 +277,28 @@ module threshold_integrator (
         if (~aresetn) begin : channel_reset
           // Zero all per-channel signals
           inflow_value[i] = 0;
-          sub_average_sum[i] = 0;
           inflow_sample_sum[i] = 0;
           queued_fifo_in_sample_sum[i] = 0;
           queued_fifo_out_sample_sum[i] = 0;
           outflow_value[i] = 0;
+          outflow_value_plus_one[i] = 0;
           outflow_remainder[i] = 0;
           total_sum[i] = 0;
           sum_delta[i] = 0;
         end else if (state == RUNNING) begin : channel_running
+
           //// Inflow logic
-          // Move new values external values in when valid
-          if (value_ready[i]) begin
-            inflow_value[i] <= (value_in[i][15]) ? (value_in[i] - 32768) : (32768 - value_in[i]);
-          end
-          // Sub-average logic
-          if (inflow_sub_average_timer != 0) begin
-            sub_average_sum[i] <= sub_average_sum[i] + inflow_value[i];
-          end else begin
-            // Remove the sub-average value from the sub-average sum and add the new inflow value
-            sub_average_sum[i] <= (sub_average_sum[i] & (1 << sub_average_size - 1)) + inflow_value[i];
-            // Sample sum logic
+          // Only sample every 16th clock cycle
+          if (~|inflow_sample_timer) begin
+            // Move new values external values in when valid
+            if (value_ready[i]) begin
+              inflow_value[i] <= value_in[i];
+            end
+            // Inflow addition logic
             if (inflow_sample_timer != 0) begin // Add to sample sum
-              inflow_sample_sum[i] <= inflow_sample_sum[i] + (sub_average_sum[i] >> sub_average_size);
+              inflow_sample_sum[i] <= inflow_sample_sum[i] + inflow_value[i];
             end else begin // Add to sample sum and move into FIFO queue. Reset sample sum
-              queued_fifo_in_sample_sum[i] <= inflow_sample_sum[i] + (sub_average_sum[i] >> sub_average_size);
+              queued_fifo_in_sample_sum[i] <= inflow_sample_sum[i] + inflow_value[i];
               inflow_sample_sum[i] <= 0;
             end
           end
@@ -338,15 +312,19 @@ module threshold_integrator (
           // Move queued samples in to outflow value and remainder
           if (outflow_timer == 0) begin
             outflow_value[i] <= queued_fifo_out_sample_sum[i] >> sample_size;
+            outflow_value_plus_one[i] <= (queued_fifo_out_sample_sum[i] >> sample_size) + 1;
             outflow_remainder[i] <= queued_fifo_out_sample_sum[i] & sample_mask;
-          end
+          end // FIFO out queue
 
           //// Sum logic
           // Pipeline the delta to the running total
-          sum_delta[i] <= ((outflow_timer & sample_mask) < outflow_remainder[i])
-                  ? $signed({2'b00, inflow_value[i]}) - $signed({2'b00, outflow_value[i]} + 1)
-                  : $signed({2'b00, inflow_value[i]}) - $signed({2'b00, outflow_value[i]});
-          total_sum[i] <= total_sum[i] + sum_delta[i];
+          if (~|outflow_timer) begin // Only add every 16th clock cycle
+            sum_delta[i] <= ((outflow_timer >> 4) < outflow_remainder[i])
+                    ? $signed({2'b00, inflow_value[i]}) - $signed({1'b0, outflow_value_plus_one[i]})
+                    : $signed({2'b00, inflow_value[i]}) - $signed({2'b00, outflow_value[i]});
+          end else if (&outflow_timer) begin
+            total_sum[i] <= total_sum[i] + sum_delta[i];
+          end // Sum logic
         end // RUNNING
       end // channel_running
     end // channel_loop

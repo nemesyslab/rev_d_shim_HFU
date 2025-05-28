@@ -100,6 +100,35 @@ proc wire {name1 name2} {
   error "** ERROR: can't connect $name1 and $name2"
 }
 
+
+# Procedure for assigning an address for a connected AXI interface pin
+#  offset: offset of the address
+#  range: range of the address
+#  target_intf_pin: name of the interface pin which will be assigned an address
+#  addr_space_intf_pin: name of the pin containing the address space
+proc addr {offset range target_intf_pin addr_space_intf_pin} {
+  set addr_space_intf [get_bd_intf_pins $addr_space_intf_pin]
+  set addr_space [get_bd_addr_spaces -of_objects $addr_space_intf]
+  set target_intf [get_bd_intf_pins $target_intf_pin]
+  set segment [get_bd_addr_segs -of_objects $target_intf]
+  assign_bd_address -target_address_space $addr_space -offset $offset -range $range $segment
+}
+
+
+# Automate the creation of an AXI interconnect. This creates an intermediary AXI core.
+#  offset: offset of the address
+#  range: range of the address
+#  intf_pin: name of the interface pin to connect to the AXI interconnect
+#  master: name of the master to connect to the AXI interconnect
+#   Note: "master" needs to be an absolute path with a "/" prefix, "intf_pin" does not
+proc auto_connect_axi {offset range intf_pin master} {
+  set object [get_bd_intf_pins $intf_pin]
+  set config [list Master $master Clk Auto]
+  apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config $config $object
+  addr $offset $range $intf_pin
+}
+
+
 # Procedure for creating a cell
 #  cell_vlnv: VLNV of the cell (vendor:library:name:version)
 #    For repository IP defined in cores, the format is:
@@ -120,6 +149,7 @@ proc cell {cell_vlnv cell_name {cell_props {}} {cell_conn {}}} {
     wire $cell_name/$local_name $remote_name
   }
 }
+
 
 # Procedure for initializing the processing system
 # Initialize the processing system from the preset defined in
@@ -155,6 +185,7 @@ proc init_ps {ps_name {ps_props {}} {ps_conn {}}} {
   }
 }
 
+
 # Procedure for creating a module from a tcl section
 #  module_src:  name of the TCL source file to include
 #  module_name: name of the module
@@ -180,31 +211,14 @@ proc module {module_src module_name {module_conn {}}} {
   }
 }
 
-# Procedure for assigning an address for a connected AXI interface pin
-#  offset: offset of the address
-#  range: range of the address
-#  target_intf_pin: name of the interface pin which will be assigned an address
-#  addr_space_intf_pin: name of the pin containing the address space
-proc addr {offset range target_intf_pin addr_space_intf_pin} {
-  set addr_space_intf [get_bd_intf_pins $addr_space_intf_pin]
-  set addr_space [get_bd_addr_spaces -of_objects $addr_space_intf]
-  set target_intf [get_bd_intf_pins $target_intf_pin]
-  set segment [get_bd_addr_segs -of_objects $target_intf]
-  assign_bd_address -target_address_space $addr_space -offset $offset -range $range $segment
+# Procedure for bringing a variable from the module calling context to the module context
+proc module_get_upvar {varname} {
+  if {[uplevel 2 [list info exists $varname]]} {
+    return [uplevel 2 [list set $varname]]
+  }
+  error "Variable $varname does not exist in the context calling the module."
 }
 
-# Automate the creation of an AXI interconnect. This creates an intermediary AXI core.
-#  offset: offset of the address
-#  range: range of the address
-#  intf_pin: name of the interface pin to connect to the AXI interconnect
-#  master: name of the master to connect to the AXI interconnect
-#   Note: "master" needs to be an absolute path with a "/" prefix, "intf_pin" does not
-proc auto_connect_axi {offset range intf_pin master} {
-  set object [get_bd_intf_pins $intf_pin]
-  set config [list Master $master Clk Auto]
-  apply_bd_automation -rule xilinx.com:bd_rule:axi4 -config $config $object
-  addr $offset $range $intf_pin
-}
 
 ##############################################################################
 ## End of block design helper procedures

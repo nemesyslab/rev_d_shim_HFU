@@ -225,7 +225,7 @@ custom_cores/%/tests/test_certificate: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$
 #  as well as "secondary expansion" (GNU Make 3.9) to allow for their use in the prerequisite
 tmp/custom_cores/%: VENDOR = $(word 1,$(subst /, ,$*))
 tmp/custom_cores/%: CORE = $(word 2,$(subst /, ,$*))
-tmp/custom_cores/%: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v
+tmp/custom_cores/%: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v $$(wildcard custom_cores/$$(VENDOR)/cores/$$(CORE)/submodules/*.v)
 	@./scripts/make/status.sh "MAKING USER CORE: '$(CORE)' by '$(VENDOR)'"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/vivado/package_core.tcl -tclargs $(VENDOR) $(CORE) $(PART)
@@ -234,7 +234,7 @@ tmp/custom_cores/%: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v
 # Requires all the cores
 # Built using the `scripts/vivado/project.tcl` script, which uses
 # 	the block design and ports files from the project
-tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr: projects/$(PROJECT)/block_design.tcl projects/$(PROJECT)/ports.tcl $(BOARD_XDC) $(addprefix tmp/custom_cores/, $(PROJECT_CORES))
+tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr: projects/$(PROJECT)/block_design.tcl projects/$(PROJECT)/ports.tcl $(BOARD_XDC) $(addprefix tmp/custom_cores/, $(PROJECT_CORES)) $(wildcard projects/$(PROJECT)/modules/*.tcl)
 	@./scripts/make/status.sh "MAKING PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/project.xpr"
 	mkdir -p $(@D)
 	$(VIVADO) -source scripts/vivado/project.tcl -tclargs $(BOARD) $(BOARD_VER) $(PROJECT)

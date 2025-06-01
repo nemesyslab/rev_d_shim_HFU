@@ -23,6 +23,20 @@ module fifo_sync #(
     reg [ADDR_WIDTH:0] rd_ptr_bin;
     reg [ADDR_WIDTH:0] rd_ptr_bin_nxt;
 
+    // FIFO memory (BRAM instance)
+    bram #(
+      .DATA_WIDTH(DATA_WIDTH),
+      .ADDR_WIDTH(ADDR_WIDTH)
+    )
+    bram(
+      .clk(clk),
+      .wr_addr(wr_ptr_bin[ADDR_WIDTH-1:0]), 
+      .wr_data(wr_data)
+      .wr_en(wr_en), 
+      .rd_addr(rd_ptr_bin_nxt[ADDR_WIDTH-1:0]),
+      .rd_data(rd_data),
+    );
+
     // Write logic
     always @(posedge clk) begin
         if (~resetn) begin
@@ -32,23 +46,8 @@ module fifo_sync #(
         end
     end
 
-    // BRAM instance
-    bram #(
-      .DATA_WIDTH(DATA_WIDTH),
-      .ADDR_WIDTH(ADDR_WIDTH)
-    )
-    bram(
-      .clk(clk),
-      .raddr(rd_ptr_bin_nxt[ADDR_WIDTH-1:0]),
-      .dout(rd_data),
-      .waddr(wr_ptr_bin[ADDR_WIDTH-1:0]), 
-      .wen(wr_en), 
-      .din(wr_data)
-    );
-
     // Read logic
-    // read_ptr_bin_nxt should be one more than rd_ptr_bin when rd_en is high
-    always @* rd_ptr_bin_nxt = rd_ptr_bin + rd_en;
+    always @* rd_ptr_bin_nxt = rd_ptr_bin + (rd_en & ~empty);
     // Update read pointer on clock edge
     always @(posedge clk) begin
         if (~resetn) begin
@@ -73,25 +72,24 @@ module fifo_sync #(
 
 endmodule
 
-// BRAM module formatted and specced to guarantee BRAM utilization in synthesis
+// BRAM module formatted and specced for BRAM utilization in synthesis
 module bram #(
     parameter DATA_WIDTH = 16,
     parameter ADDR_WIDTH = 4
 )(
     input  wire                   clk,
-    input  wire [DATA_WIDTH-1:0]  din,
-    input  wire                   wen,
-    output reg  [DATA_WIDTH-1:0]  dout,
-
-    input  wire [ADDR_WIDTH-1:0]  raddr,
-    input  wire [ADDR_WIDTH-1:0]  waddr
+    input  wire [ADDR_WIDTH-1:0]  wr_addr,
+    input  wire [DATA_WIDTH-1:0]  wr_data,
+    input  wire                   wr_en,
+    input  wire [ADDR_WIDTH-1:0]  rd_addr,
+    output reg  [DATA_WIDTH-1:0]  rd_data
 );
 
     (* ram_style = "block" *) reg [DATA_WIDTH-1:0] mem [0:(1<<ADDR_WIDTH)-1];
 
     always @(posedge clk) begin
-        if(wen) mem[waddr] <= din;
-        dout <= mem[raddr];
+        if(wr_en) mem[wr_addr] <= wr_data;
+        rd_data <= mem[rd_addr];
     end
 
 endmodule

@@ -21,7 +21,7 @@ module ad5676_dac_ctrl #(
   output reg [119:0] abs_dac_val_concat,
 
   output reg         n_cs,
-  output reg         mosi,
+  output wire        mosi,
   input  wire        miso,
   input  wire        miso_sck,
   output reg         ldac
@@ -48,15 +48,18 @@ module ad5676_dac_ctrl #(
   reg [ 4:0] dac_spi_bit;
   reg signed [15:0] first_dac_val_signed;
   reg signed [16:0] first_dac_val_cal_signed;
-  reg [15:0] first_dac_val_cal;
   reg signed [15:0] second_dac_val_signed;
   reg signed [16:0] second_dac_val_cal_signed;
-  reg [15:0] second_dac_val_cal;
+  reg [47:0] dac_shift_reg; // Shift register for DAC SPI data
   reg [14:0] abs_dac_val [0:7]; // Stored absolute DAC values for each channel
   reg [ 1:0] dac_load_stage;
 
   // Internal constants
-  localparam DAC_UPDATE_DELAY = 6'd41; // Minimum DAC delay clock cycles (minus 1)
+  localparam DAC_UPDATE_TIME = 6'd41; // Minimum DAC delay clock cycles (minus 1)
+  localparam DAC_SPI_START_TIME = 6'd34; // Mildly arbitrary delay after starting DAC write cycle to start the SPI transfer (should be over 26)
+
+  // DAC SPI command
+  localparam SPI_CMD_REG_WRITE = 4'b0001; // DAC SPI command for register write to be later loaded with LDAC
 
   // States
   localparam INIT = 3'd0; // Initial state
@@ -214,8 +217,8 @@ module ad5676_dac_ctrl #(
   // DAC word timer logic
   always @(posedge clk) begin
     if (~resetn || state == ERROR) dac_update_timer <= 6'd0;
-    else if (cmd_finished && next_cmd_state == DAC_WR) dac_update_timer <= DAC_UPDATE_DELAY;
-    else if (state == DAC_WR && dac_update_timer == 0 && ~last_dac_channel) dac_update_timer <= DAC_UPDATE_DELAY;
+    else if (cmd_finished && next_cmd_state == DAC_WR) dac_update_timer <= DAC_UPDATE_TIME;
+    else if (state == DAC_WR && dac_update_timer == 0 && ~last_dac_channel) dac_update_timer <= DAC_UPDATE_TIME;
     else if (state == DAC_WR && dac_update_timer > 0) dac_update_timer <= dac_update_timer - 1;
   end
   // DAC ready logic
@@ -235,10 +238,8 @@ module ad5676_dac_ctrl #(
     if (~resetn || state == ERROR) begin
       first_dac_val_signed <= 16'd0;
       first_dac_val_cal_signed <= 17'd0;
-      first_dac_val_cal <= 16'd0;
       second_dac_val_signed <= 16'd0;
       second_dac_val_cal_signed <= 17'd0;
-      second_dac_val_cal <= 16'd0;
       abs_dac_val[0] <= 15'd0;
       abs_dac_val[1] <= 15'd0;
       abs_dac_val[2] <= 15'd0;
@@ -273,37 +274,34 @@ module ad5676_dac_ctrl #(
           // Make sure the calibrated values are within bounds
           if (first_dac_val_cal_signed < -32767 || first_dac_val_cal_signed > 32767 ||
               second_dac_val_cal_signed < -32767 || second_dac_val_cal_signed > 32767) dac_val_oob <= 1'b1;
-          else begin
-            first_dac_val_cal <= signed_to_offset(first_dac_val_cal_signed);
-            second_dac_val_cal <= signed_to_offset(second_dac_val_cal_signed);
-            dac_load_stage <= 2'b00; // Conversion is done
-          end
+          dac_load_stage <= 2'b00; // Conversion is done
         end
       endcase
   end
   // DAC SPI bit logic
   always @(posedge clk) begin
     if (~resetn || state != DAC_WR) dac_spi_bit <= 5'd0;
-    else if (state == DAC_WR && dac_load_stage == 2'b10) dac_spi_bit <= 5'd23;
+    else if (state == DAC_WR && dac_update_timer == DAC_SPI_START_TIME) dac_spi_bit <= 5'd24;
     else if (state == DAC_WR && dac_spi_bit > 0) dac_spi_bit <= dac_spi_bit - 1; // Decrement SPI bit counter
   end
   // SPI MOSI bits
-  always @* begin
-    // Determine first/second by parity of the channel
-    if (state == DAC_WR && ~dac_channel[0]) mosi = first_dac_val_cal[dac_spi_bit];
-    else if (state == DAC_WR && dac_channel[0]) mosi = second_dac_val_cal[dac_spi_bit];
-    else mosi = 1'b0; // Default to 0 when not writing
+  assign mosi = dac_shift_reg[47]; // MOSI is the most significant bit of the shift register
+  always @(posedge clk) begin
+    if (~resetn || state == ERROR) dac_shift_reg <= 48'd0; // Reset shift register on reset or error
+    else if (state == DAC_WR && dac_load_stage == 2'b10) begin
+      // Load the shift register with the first DAC value and the second DAC value
+      dac_shift_reg <= {spi_write_cmd(dac_channel, signed_to_offset(first_dac_val_cal_signed)), 
+                        spi_write_cmd(dac_channel + 1, signed_to_offset(second_dac_val_cal_signed))};
+    end else if (state == DAC_WR && dac_spi_bit > 0) dac_shift_reg <= {dac_shift_reg[46:0], 1'b0}; // Shift left
   end
 
   // Convert from offset to signed     
-  // Given a 16-bit 0-65535 number, treat 32768 as 0, 0 as -32768, and 65535 as +32767.
+  // Given a 16-bit 0-65535 number, treat 32767 as 0, 0 as -32767, 
+  //   and 65535 as disallowed (return 0, handle the error before calling)
   function signed [15:0] offset_to_signed(input [15:0] raw_dac_val);
     begin
-      if (raw_dac_val < 32768) begin
-        offset_to_signed = raw_dac_val - 32768; // Convert to signed by subtracting 32768
-      end else begin
-        offset_to_signed = raw_dac_val - 65536; // Convert to signed by subtracting 65536
-      end
+      if (raw_dac_val == 16'hFFFF) offset_to_signed = 16'sd0; // Disallowed value, return 0
+      else offset_to_signed = $signed(raw_dac_val) - 16'sd32767; // Correct conversion for full 16-bit range
     end
   endfunction
 
@@ -319,14 +317,18 @@ module ad5676_dac_ctrl #(
   endfunction
 
   // Convert signed value to offset (0-65535) representation
-  function [15:0] signed_to_offset(input signed [15:0] signed_val);
+  // Inverse of offset_to_signed: offset = signed_val + 32767
+  //   Should handle out of bounds before calling, but will return 32767 if out of bounds
+  function [15:0] signed_to_offset(input signed [16:0] signed_val);
     begin
-      if (signed_val < 0) begin
-        signed_to_offset = signed_val + 32768; // Convert negative to offset by adding 32768
-      end else begin
-        signed_to_offset = signed_val + 65536; // Convert positive to offset by adding 65536
-      end
+      if (signed_val < -16'sd32767 || signed_val > 16'sd32767) signed_to_offset = 16'd32767; // If out of bounds, return offset representation of 0
+      else signed_to_offset = signed_val + 16'sd32767;
     end
-  endfunction      
+  endfunction
+
+  // SPI command to write to particular DAC channel, waiting for LDAC
+  function [23:0] spi_write_cmd(input [2:0] channel, input [15:0] dac_val);
+    spi_write_cmd = {SPI_CMD_REG_WRITE, 1'b0, channel, dac_val}; // Construct the SPI command with write command and channel
+  endfunction
 
 endmodule

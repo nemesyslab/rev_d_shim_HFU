@@ -1,4 +1,5 @@
 # Threshold Integrator Core
+*Updated 2025-06-04*
 
 The `threshold_integrator` module is a safety core designed for the Rev D shim firmware. It captures the absolute values of DAC and ADC inputs/outputs and maintains a running sum over a user-defined window. If any channel's sum exceeds a user-defined threshold, it sends a fault signal to the system.
 
@@ -6,8 +7,8 @@ The `threshold_integrator` module is a safety core designed for the Rev D shim f
 
 ### Inputs:
 - **Clock and Reset**:
-  - `clk`: SPI clock signal for synchronous operation.
-  - `aresetn`: Active-low reset signal to initialize the module.
+  - `clk`: Clock signal for synchronous operation.
+  - `resetn`: Active-low reset signal to initialize the module.
 
 - **Control Signals**:
   - `enable`: Enable signal to start the integrator.
@@ -18,12 +19,11 @@ The `threshold_integrator` module is a safety core designed for the Rev D shim f
   - `threshold_average`: 15-bit unsigned value defining the threshold average (absolute, range: 0 to \(2^{15} - 1\)).
 
 - **Input Data**:
-  - `abs_value_in_concat`: 120-bit concatenated input containing 8 channels of 15-bit unsigned absolute values.
-  - `value_ready_concat`: 8-bit concatenated signal indicating data readiness for each channel.
+  - `abs_sample_concat`: 120-bit concatenated input containing 8 channels of 15-bit unsigned absolute values.
 
 ### Outputs:
 - **Status Signals**:
-  - `over_threshold`: Signal indicating that the running sum has exceeded the threshold.
+  - `over_thresh`: Signal indicating that the running sum has exceeded the threshold.
   - `err_overflow`: Signal indicating a FIFO overflow error.
   - `err_underflow`: Signal indicating a FIFO underflow error.
   - `setup_done`: Signal indicating that the setup phase is complete.
@@ -46,12 +46,13 @@ The `threshold_integrator` module is a safety core designed for the Rev D shim f
 
 ### Running Phase:
 - **Inflow Logic**:
-  - For each channel, captures the absolute value of the input when `value_ready` is high.
+  - For each channel, captures the absolute value of the input every 16th clock cycle.
   - Aggregates values into a sample sum.
   - Pushes sample sums into the FIFO when the inflow sample timer resets.
 - **Outflow Logic**:
   - Pops 8 samples from the FIFO when the outflow timer reaches 16.
-  - Subtracts the average and remainder of the outflow sample from the running total sum.
+  - Moves queued samples into outflow values and remainders.
+  - Updates the running total sum for each channel using the difference between inflow and outflow values.
 - **Threshold Check**:
   - If any running total sum exceeds the threshold, transitions to the `OUT_OF_BOUNDS` state.
 
@@ -60,7 +61,7 @@ The `threshold_integrator` module is a safety core designed for the Rev D shim f
 
 ## Core Specifications
 
-- **Clock Domain**: SPI clock.
+- **Clock Domain**: System clock.
 - **FIFO**: One 36-bit wide FIFO with a depth of 1024.
 - **Internal Signals**:
   - 44-bit unsigned `max_value`.
@@ -84,5 +85,4 @@ The `threshold_integrator` module is a safety core designed for the Rev D shim f
 - The minimum window size is 2048 to ensure sufficient processing time for FIFO operations.
 
 ### References:
-- [Xilinx Parameterized Macros](https://docs.amd.com/r/2024.1-English/ug953-vivado-7series-libraries/XPM_FIFO_SYNC)
 - [7 Series Memory Resources](https://docs.amd.com/v/u/en-US/ug473_7Series_Memory_Resources)

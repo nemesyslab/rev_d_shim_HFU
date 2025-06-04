@@ -1,6 +1,7 @@
 # AXI Shim Config Core
+*Updated 2025-06-04*
 
-The `axi_shim_cfg` module provides a configurable interface for managing system parameters via an AXI4-Lite interface. It ensures range compliance and prevents updating values while the system is enabled, providing error signals accordingly. The core operates as follows:
+The `shim_axi_prestart_cfg` module provides a configurable interface for managing system parameters via an AXI4-Lite interface.
 
 - **Inputs and Outputs**:
   - **Inputs**:
@@ -17,13 +18,11 @@ The `axi_shim_cfg` module provides a configurable interface for managing system 
     - `s_axi_arvalid`: AXI4-Lite read address valid.
     - `s_axi_rready`: AXI4-Lite read response ready.
   - **Outputs**:
-    - `trig_lockout`: 32-bit trigger lockout configuration.
     - `integ_thresh_avg`: 15-bit integration threshold average configuration.
     - `integ_window`: 32-bit integration window configuration.
     - `integ_en`: Integration enable signal.
-    - `buffer_reset`: 16-bit buffer reset configuration.
+    - `buffer_reset`: 25-bit buffer reset configuration.
     - `sys_en`: System enable signal.
-    - `trig_lockout_oob`: Out-of-bounds signal for trigger lockout.
     - `integ_thresh_avg_oob`: Out-of-bounds signal for integration threshold average.
     - `integ_window_oob`: Out-of-bounds signal for integration window.
     - `integ_en_oob`: Out-of-bounds signal for integration enable.
@@ -42,7 +41,7 @@ The `axi_shim_cfg` module provides a configurable interface for managing system 
   - On reset (`aresetn` low), all internal and output configuration values are initialized to their parameterized default values, capped to their valid ranges.
   - Output configuration values are updated to the AXI-written internal variables and locked when the `sys_en` bit is set high by the AXI interface. Once locked, any attempt to modify the values results in a lock violation, indicated by latching high the `lock_viol` signal.
   - Each internal configuration value is checked against a parameterized range defined in local parameters. If a value is outside its valid range, a corresponding "out-of-bounds" signal is asserted.
-  - The `buffer_reset` signal is unique in that it is only used when unlocked. It is a 16-bit signal that is used bitwise to reset the buffers for the DAC and ADC. The `buffer_reset` signal is not used when the system is enabled, and is set to 0. If the internal register had not been set to 0, this will result in an immediate lock violation.
+  - The `buffer_reset` signal is unique in that it is not locked by the `sys_en` signal. While reset is active, it is set to `25b1`, but it defaults to `25b0`.
   - The `unlock` signal can be used to clear the lock and allow modifications to the configuration registers if `sys_en` has been set low.
   - The module supports AXI4-Lite read and write operations for accessing and modifying configuration values. Write responses include error codes to indicate out-of-bounds violations or lock violations.
 

@@ -1,6 +1,7 @@
 # SPI System Status Synchronization Core
+*Updated 2025-06-04*
 
-The `spi_sts_sync` module synchronizes status signals from the SPI clock domain to the AXI (PS) clock domain.
+The `shim_spi_sts_sync` module synchronizes status signals from the SPI domain to the AXI (PS) clock domain.
 
 ## Inputs and Outputs
 
@@ -8,31 +9,38 @@ The `spi_sts_sync` module synchronizes status signals from the SPI clock domain 
 
 - **Clocks and Reset**
   - `aclk`: AXI (PS) clock signal.
-  - `spi_clk`: SPI clock signal.
   - `aresetn`: Active-low reset signal for the AXI domain.
 
 - **SPI Domain Status Inputs**
   - `spi_off`: Indicates the SPI subsystem is powered off.
-  - `over_thresh [7:0]`: DAC over-threshold status (per board).
-  - `adc_over_thresh [7:0]`: ADC over-threshold status (per board).
-  - `thresh_underflow [7:0]`: DAC threshold FIFO underflow status (per board).
-  - `thresh_overflow [7:0]`: DAC threshold FIFO overflow status (per board).
-  - `dac_buf_underflow [7:0]`: DAC buffer underflow status (per board).
-  - `adc_buf_overflow [7:0]`: ADC buffer overflow status (per board).
-  - `unexp_dac_trig [7:0]`: Unexpected DAC trigger status (per board).
-  - `unexp_adc_trig [7:0]`: Unexpected ADC trigger status (per board).
+  - `over_thresh [7:0]`: Integrator over-threshold status.
+  - `thresh_underflow [7:0]`: Integrator threshold underflow status.
+  - `thresh_overflow [7:0]`: Integrator threshold overflow status.
+  - `bad_dac_cmd [7:0]`: Bad DAC command detected.
+  - `dac_cal_oob [7:0]`: DAC calibration out-of-bounds.
+  - `dac_val_oob [7:0]`: DAC value out-of-bounds.
+  - `dac_cmd_buf_underflow [7:0]`: DAC command buffer underflow.
+  - `unexp_dac_trig [7:0]`: Unexpected DAC trigger.
+  - `bad_adc_cmd [7:0]`: Bad ADC command detected.
+  - `adc_cmd_buf_underflow [7:0]`: ADC command buffer underflow.
+  - `adc_data_buf_overflow [7:0]`: ADC data buffer overflow.
+  - `unexp_adc_trig [7:0]`: Unexpected ADC trigger.
 
 ### Outputs
 
 - **AXI Domain Synchronized Outputs**
   - `spi_off_stable`: Synchronized and stable SPI off status.
-  - `over_thresh_stable [7:0]`: Synchronized and stable DAC over-threshold status.
-  - `adc_over_thresh_stable [7:0]`: Synchronized and stable ADC over-threshold status.
-  - `thresh_underflow_stable [7:0]`: Synchronized and stable DAC threshold underflow status.
-  - `thresh_overflow_stable [7:0]`: Synchronized and stable DAC threshold overflow status.
-  - `dac_buf_underflow_stable [7:0]`: Synchronized and stable DAC buffer underflow status.
-  - `adc_buf_overflow_stable [7:0]`: Synchronized and stable ADC buffer overflow status.
+  - `over_thresh_stable [7:0]`: Synchronized and stable integrator over-threshold status.
+  - `thresh_underflow_stable [7:0]`: Synchronized and stable integrator threshold underflow status.
+  - `thresh_overflow_stable [7:0]`: Synchronized and stable integrator threshold overflow status.
+  - `bad_dac_cmd_stable [7:0]`: Synchronized and stable bad DAC command status.
+  - `dac_cal_oob_stable [7:0]`: Synchronized and stable DAC calibration out-of-bounds status.
+  - `dac_val_oob_stable [7:0]`: Synchronized and stable DAC value out-of-bounds status.
+  - `dac_cmd_buf_underflow_stable [7:0]`: Synchronized and stable DAC command buffer underflow status.
   - `unexp_dac_trig_stable [7:0]`: Synchronized and stable unexpected DAC trigger status.
+  - `bad_adc_cmd_stable [7:0]`: Synchronized and stable bad ADC command status.
+  - `adc_cmd_buf_underflow_stable [7:0]`: Synchronized and stable ADC command buffer underflow status.
+  - `adc_data_buf_overflow_stable [7:0]`: Synchronized and stable ADC data buffer overflow status.
   - `unexp_adc_trig_stable [7:0]`: Synchronized and stable unexpected ADC trigger status.
 
 ## Operation

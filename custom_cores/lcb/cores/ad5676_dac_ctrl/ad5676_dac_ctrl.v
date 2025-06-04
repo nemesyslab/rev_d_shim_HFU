@@ -39,7 +39,7 @@ module ad5676_dac_ctrl #(
   // Timer
   reg [24:0] timer;
   // Calibration
-  reg signed [15:0] cal_val;
+  reg signed [15:0] cal_val [0:7]; // Calibration values for each channel
   // DAC control signals
   reg        read_next_dac_word;
   reg        dac_ready;
@@ -193,13 +193,21 @@ module ad5676_dac_ctrl #(
 
 
   //// Calibration
+  // Calibration value set and out-of-bounds logic
   always @(posedge clk) begin
     if (~resetn) begin
-      cal_val <= 16'd0;
+      cal_val[0] <= 16'd0;
+      cal_val[1] <= 16'd0;
+      cal_val[2] <= 16'd0;
+      cal_val[3] <= 16'd0;
+      cal_val[4] <= 16'd0;
+      cal_val[5] <= 16'd0;
+      cal_val[6] <= 16'd0;
+      cal_val[7] <= 16'd0;
       cal_oob <= 1'b0;
     end else if (cmd_finished && next_cmd_state == IDLE && cmd_word[31:30] == CMD_SET_CAL) begin
       if ($signed(cmd_word[15:0]) <= $signed(ABS_CAL_MAX) && $signed(cmd_word[15:0]) >= -$signed(ABS_CAL_MAX)) begin
-        cal_val <= cmd_word[15:0]; // Set calibration value if within bounds
+        cal_val[cmd_word[18:16]] <= cmd_word[15:0]; // Set calibration value for the channel if within bounds
       end else begin
         cal_oob <= 1'b1; // Set out-of-bounds flag if calibration value is out of range
       end
@@ -266,8 +274,8 @@ module ad5676_dac_ctrl #(
           end
         end
         2'b01: begin // Second stage, adding calibration and getting absolute values
-          first_dac_val_cal_signed <= first_dac_val_signed + cal_val; // Add calibration to first DAC value
-          second_dac_val_cal_signed <= second_dac_val_signed + cal_val; // Add calibration to second DAC value
+          first_dac_val_cal_signed <= first_dac_val_signed + cal_val[dac_channel]; // Add calibration to first DAC value
+          second_dac_val_cal_signed <= second_dac_val_signed + cal_val[dac_channel+1]; // Add calibration to second DAC value
           abs_dac_val[dac_channel] <= signed_to_abs(first_dac_val_cal_signed); // Convert first DAC value to absolute
           abs_dac_val[dac_channel + 1] <= signed_to_abs(second_dac_val_cal_signed); // Convert second DAC value to absolute
           dac_load_stage <= 2'b10; // Move to final stage

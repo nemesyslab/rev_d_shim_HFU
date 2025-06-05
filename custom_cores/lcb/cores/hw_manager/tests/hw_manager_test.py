@@ -1,7 +1,8 @@
 import cocotb
-from cocotb.triggers import RisingEdge , Timer
+from cocotb.triggers import RisingEdge , Timer, ReadOnly
 from hw_manager_base import hw_manager_base
 
+epsilon = 100 # small epsilon for 100 ps
 
 # Create a setup function that can be called by each test
 async def setup_testbench(dut):
@@ -62,8 +63,7 @@ async def test_configuration_errors(dut):
     # Iterate through each error condition
     for error_signal, expected_status, status_name in error_conditions:
         await tb.reset()
-        tb.dut._log.info(f"Testing error condition: {status_name}")
-
+        tb.dut._log.info(f"TESTING ERROR CONDITION: {status_name}")
         error_signal.value = 1  # Set the error signal to 1
         dut.sys_en.value = 1  # Enable the system
         tb.dut._log.info(f"sys_en = {dut.sys_en.value}, {status_name} = {error_signal.value}")
@@ -72,11 +72,11 @@ async def test_configuration_errors(dut):
         await tb.wait_for_state(8) # HALTED = 8
         tb.dut._log.info(f"sys_en = {dut.sys_en.value}, {status_name} = {error_signal.value}")
         await tb.check_state_and_status(8, expected_status)  # Check that we are in HALTED = 8 state with the expected status
-
+        await RisingEdge(dut.clk)
         error_signal.value = 0 # Reset the error signal
         dut.sys_en.value = 0  # Reset the sys_en signal
 
-# In a normal startup, the system should go from IDLE to RUNNING state. This test checks the state transtions for that.
+# In a normal startup, the system should go from IDLE to RUNNING state. This test checks the state transitions for that.
 @cocotb.test()
 async def test_normal_startup(dut):
     tb = await setup_testbench(dut)
@@ -90,44 +90,47 @@ async def test_normal_startup(dut):
     
     # Enable the system
     dut.sys_en.value = 1
+    dut.spi_off.value = 1  # SPI initially off (not initialized)
+    
+    # Wait for CONFIRM_SPI_INIT state
+    await tb.wait_for_state(2)  # CONFIRM_SPI_INIT = 2
+    await tb.check_state_and_status(2, 1)  # Check that we are in CONFIRM_SPI_INIT state
+    
+    # Simulate SPI being initialized (off)
+    await tb.wait_cycles(10)
+    dut.spi_off.value = 1  # Confirm SPI is off (initialized)
     
     # Wait for RELEASE_SD_F state
-    await tb.wait_for_state(2)  # RELEASE_SD_F = 2
-    await tb.check_state_and_status(2, 1)  # Check that we are in RELEASE_SD_F state
-    
+    await tb.wait_for_state(3, None, False, tb.SPI_INIT_WAIT + 1000)  # RELEASE_SD_F = 3
+    await tb.check_state_and_status(3, 1)  # Check that we are in RELEASE_SD_F state
+
     # Wait for PULSE_SD_RST state
-    await tb.wait_for_state(3, None, False, tb.SHUTDOWN_FORCE_DELAY + 1000)  # PULSE_SD_RST = 3
-    await tb.check_state_and_status(3, 1)  # Check that we are in PULSE_SD_RST state
+    await tb.wait_for_state(4, None, False, tb.SHUTDOWN_FORCE_DELAY + 1000)  # PULSE_SD_RST = 4
+    await tb.check_state_and_status(4, 1)  # Check that we are in PULSE_SD_RST state
 
     # Wait for SD_RST_DELAY state
-    await tb.wait_for_state(4, None, False, tb.SHUTDOWN_RESET_PULSE + 1000)  # SD_RST_DELAY = 4
-    await tb.check_state_and_status(4, 1)  # Check that we are in SD_RST_DELAY state
+    await tb.wait_for_state(5, None, False, tb.SHUTDOWN_RESET_PULSE + 1000)  # SD_RST_DELAY = 5
+    await tb.check_state_and_status(5, 1)  # Check that we are in SD_RST_DELAY state
 
-    # Wait for START_DMA state
-    await tb.wait_for_state(5, None, False, tb.SHUTDOWN_RESET_DELAY + 1000)  # START_DMA = 5
-    await tb.check_state_and_status(5, 1)  # Check that we are in START_DMA state
-    await tb.wait_cycles(100) # Wait for a few cycles to set dac_buf_loaded
-    dut.dac_buf_loaded.value = 1  # Set dac_buf_full to 1
-    
-    # Wait for START_SPI state
-    await tb.wait_for_state(6, None, False, tb.SPI_INIT_WAIT + 1000)  # START_SPI = 6
-    await tb.check_state_and_status(6, 1)  # Check that we are in START_SPI state
+    # Wait for CONFIRM_SPI_START state
+    await tb.wait_for_state(6, None, False, tb.SHUTDOWN_RESET_DELAY + 1000)  # CONFIRM_SPI_START = 6
+    await tb.check_state_and_status(6, 1)  # Check that we are in CONFIRM_SPI_START state
     await tb.wait_cycles(100)  # Wait for a few cycles to set spi_running
-    dut.spi_running.value = 1  # Set spi_running to 1
+    dut.spi_off.value = 0  # Set SPI running (not off)
 
     # Should reach RUNNING state
     await tb.wait_for_state(7, None, False, tb.SPI_START_WAIT + 1000)  # RUNNING = 7
 
-    # Check that system is properly enabled
-    assert dut.sys_rst.value == 0, "System reset should be deasserted"
+    # Check that system is properly enabled - updated signal names
     assert dut.n_shutdown_force.value == 1, "Shutdown force should be released"
     assert dut.n_shutdown_rst.value == 1, "Shutdown reset should be released"
-    assert dut.dma_en.value == 1, "DMA should be enabled"
+    assert dut.shutdown_sense_en.value == 1, "Shutdown sense should be enabled"
     assert dut.spi_en.value == 1, "SPI should be enabled"
     assert dut.trig_en.value == 1, "Trigger should be enabled"
     assert dut.ps_interrupt.value == 1, "Interrupt should be asserted"
     
     await RisingEdge(dut.clk)
+    await ReadOnly()  # Ensure all signals are updated
     assert dut.ps_interrupt.value == 0, "Interrupt should be cleared"
 
     # Verify we're in RUNNING state with STATUS_OK
@@ -145,10 +148,9 @@ async def test_halted_to_idle(dut):
     await RisingEdge(dut.clk)
 
     # Check that the system is in HALTED state
-    await tb.check_state_and_status(8, 10)  # HALTED = 8, STATUS_LOCK_VIOL = 10
-    assert dut.sys_rst.value == 1, "Expected system reset"
+    await tb.check_state_and_status(8, 0x0204)  # HALTED = 8, STATUS_LOCK_VIOL = 0x0204
     assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
-    assert dut.dma_en.value == 0, "Expected DMA disabled"
+    assert dut.shutdown_sense_en.value == 0, "Expected shutdown sense disabled"
     assert dut.spi_en.value == 0, "Expected SPI disabled"
     assert dut.ps_interrupt.value == 1, "Expected interrupt asserted"
 

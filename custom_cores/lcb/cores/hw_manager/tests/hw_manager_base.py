@@ -1,6 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, FallingEdge, Timer
+from cocotb.triggers import RisingEdge, FallingEdge, Timer, ReadOnly
 from cocotb.regression import TestFactory
 from cocotb.result import TestFailure
 
@@ -189,31 +189,48 @@ class hw_manager_base:
         self.dut._log.info("RESET COMPLETE")
 
     async def check_state_and_status(self, expected_state, expected_status_code, expected_board_num=0):
-        """Check the status outputs and the state of the hardware manager"""
+        """Check the status outputs and the state of the hardware manager.
+        Only log detailed information if there's a mismatch."""
         status_info = self.extract_state_and_status()
         state = status_info["state_value"]
         status_code = status_info["status_code"]
         board_num = status_info["board_num"]
-        time = cocotb.utils.get_sim_time(units=self.time_unit)
-        
-        self.dut._log.info(f"------------EXPECTED STATUS AT TIME = {time} ------------")
-        self.dut._log.info(f"Expected State: {self.get_state_name(expected_state)} ({expected_state})")
-        self.dut._log.info(f"Expected Status: {self.get_status_name(expected_status_code)} ({expected_status_code})")
-        if expected_board_num > 0:
-            self.dut._log.info(f"Expected Board: {expected_board_num}")
-        # Log current status at the same time
-        self.print_current_status()
-        
-        # Pass the test if the state and status match the expected values
-        assert state == expected_state, f"Expected state {self.get_state_name(expected_state)}({expected_state}), " \
-            f"got {self.get_state_name(state)}({state})"
-        
-        assert status_code == expected_status_code, f"Expected status code {self.get_status_name(expected_status_code)}({expected_status_code}), " \
-            f"got {self.get_status_name(status_code)}({status_code})"
-        
-        assert board_num == expected_board_num, f"Expected board number {expected_board_num}, got {board_num}"
+
+        # Compare values first
+        mismatch = (
+            state != expected_state
+            or status_code != expected_status_code
+            or board_num != expected_board_num
+        )
+
+        if mismatch:
+            time = cocotb.utils.get_sim_time(units=self.time_unit)
+            self.dut._log.info(f"------------STATUS CHECK FAILED AT TIME = {time} ------------")
+            self.dut._log.info(f"Expected State: {self.get_state_name(expected_state)} ({expected_state})")
+            self.dut._log.info(f"Expected Status: {self.get_status_name(expected_status_code)} ({expected_status_code})")
+            if expected_board_num > 0:
+                self.dut._log.info(f"Expected Board: {expected_board_num}")
+            # Log current status
+            self.print_current_status()
+
+            # Now raise the assertion with detailed message
+            if state != expected_state:
+                raise AssertionError(
+                    f"Expected state {self.get_state_name(expected_state)} ({expected_state}), "
+                    f"got {self.get_state_name(state)} ({state})"
+                )
+            if status_code != expected_status_code:
+                raise AssertionError(
+                    f"Expected status code {self.get_status_name(expected_status_code)} ({expected_status_code}), "
+                    f"got {self.get_status_name(status_code)} ({status_code})"
+                )
+            if board_num != expected_board_num:
+                raise AssertionError(
+                    f"Expected board number {expected_board_num}, got {board_num}"
+                )
 
         return state, status_code, board_num
+
     
     async def check_state(self, expected_state):
         """Check the state of the hardware manager"""
@@ -241,7 +258,7 @@ class hw_manager_base:
         max_wait_cycles: Optional maximum number of cycles to wait, overrides timeout_ns if specified
         """
         expected_state_name = self.get_state_name(expected_state)
-        self.dut._log.info(f"Waiting for state: {expected_state_name}({expected_state})")
+        self.dut._log.info(f"System should reach state: {expected_state_name}({expected_state})")
 
         # Calculate max cycles based on either max_wait_cycles or timeout_ns
         max_cycles = max_wait_cycles if max_wait_cycles is not None else (timeout_ns // 4)
@@ -252,8 +269,8 @@ class hw_manager_base:
         inital_state = self.dut.state.value
 
         for i in range(max_cycles):
-            await RisingEdge(self.dut.clk)
-
+            
+            await ReadOnly()  # Ensure all signals are updated before checking state
             current_state = self.dut.state.value
 
             # Log state transitions for debugging
@@ -270,6 +287,8 @@ class hw_manager_base:
             if not allow_intermediate_states and i > 0 and current_state != inital_state:
                 assert current_state == expected_state, \
                     f"Reached unexpected state {last_state_name}({current_state}) while waiting for {expected_state_name}({expected_state})"
+                
+            await RisingEdge(self.dut.clk)
             
         # If we reach here, we timed out waiting for the expected state
         self.dut._log.info(f"BEFORE FAILURE:")

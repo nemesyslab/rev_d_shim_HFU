@@ -1,8 +1,6 @@
 import cocotb
-from cocotb.triggers import RisingEdge , Timer, ReadOnly
+from cocotb.triggers import RisingEdge , Timer, ReadOnly, FallingEdge
 from hw_manager_base import hw_manager_base
-
-epsilon = 100 # small epsilon for 100 ps
 
 # Create a setup function that can be called by each test
 async def setup_testbench(dut):
@@ -27,9 +25,10 @@ async def normal_start_up_with_no_log(dut):
     dut.sys_en.value = 1
 
     # Wait for CONFIRM_SPI_START state
-    await tb.wait_for_state(6, None, True, tb.SHUTDOWN_FORCE_DELAY + tb.SHUTDOWN_RESET_DELAY + tb.SHUTDOWN_RESET_PULSE + 5)
+    await tb.wait_for_state(6, None, True, tb.SPI_INIT_WAIT + tb.SHUTDOWN_FORCE_DELAY + tb.SHUTDOWN_RESET_DELAY + tb.SHUTDOWN_RESET_PULSE + 5)
     
     # Simulate SPI subsystem being off (initialized)
+    await RisingEdge(dut.clk)
     dut.spi_off.value = 0  # SPI is running
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
@@ -121,7 +120,7 @@ async def test_normal_startup(dut):
     # Should reach RUNNING state
     await tb.wait_for_state(7, None, False, tb.SPI_START_WAIT + 1000)  # RUNNING = 7
 
-    # Check that system is properly enabled - updated signal names
+    # Check that system is properly enabled
     assert dut.n_shutdown_force.value == 1, "Shutdown force should be released"
     assert dut.n_shutdown_rst.value == 1, "Shutdown reset should be released"
     assert dut.shutdown_sense_en.value == 1, "Shutdown sense should be enabled"
@@ -143,17 +142,20 @@ async def test_halted_to_idle(dut):
     tb.dut._log.info("STARTING TEST: test_halted_to_idle")
 
     # Simulate a runtime error
+    await RisingEdge(dut.clk)
     dut.lock_viol.value = 1
-    await RisingEdge(dut.clk)
-    await RisingEdge(dut.clk)
-
+    await RisingEdge(dut.clk) # where the error is detected
+    await RisingEdge(dut.clk) # where the state is updated
     # Check that the system is in HALTED state
     await tb.check_state_and_status(8, 0x0204)  # HALTED = 8, STATUS_LOCK_VIOL = 0x0204
     assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
     assert dut.shutdown_sense_en.value == 0, "Expected shutdown sense disabled"
+    assert dut.spi_clk_power_n == 1, "Expected SPI clock power disabled"
     assert dut.spi_en.value == 0, "Expected SPI disabled"
+    assert dut.trig_en.value == 0, "Expected trigger disabled"
     assert dut.ps_interrupt.value == 1, "Expected interrupt asserted"
 
+    await RisingEdge(dut.clk)
     dut.sys_en.value = 0  # Enable signal goes low
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
@@ -167,145 +169,126 @@ async def test_halted_to_idle(dut):
 async def test_runtime_errors(dut):
 
     error_conditions = [
-        (dut.lock_viol, 10, "STATUS_LOCK_VIOL"),
-        (dut.shutdown_sense, 11, "STATUS_SHUTDOWN_SENSE"),
-        (dut.ext_shutdown, 12, "STATUS_EXT_SHUTDOWN"),
-        (dut.dac_over_thresh, 13, "STATUS_DAC_OVER_THRESH"),
-        (dut.adc_over_thresh, 14, "STATUS_ADC_OVER_THRESH"),
-        (dut.dac_thresh_underflow, 15, "STATUS_DAC_THRESH_UNDERFLOW"),
-        (dut.dac_thresh_overflow, 16, "STATUS_DAC_THRESH_OVERFLOW"),
-        (dut.adc_thresh_underflow, 17, "STATUS_ADC_THRESH_UNDERFLOW"),
-        (dut.adc_thresh_overflow, 18, "STATUS_ADC_THRESH_OVERFLOW"),
-        (dut.dac_buf_underflow, 19, "STATUS_DAC_BUF_UNDERFLOW"),
-        (dut.dac_buf_overflow, 20, "STATUS_DAC_BUF_OVERFLOW"),
-        (dut.adc_buf_underflow, 21, "STATUS_ADC_BUF_UNDERFLOW"),
-        (dut.adc_buf_overflow, 22, "STATUS_ADC_BUF_OVERFLOW"),
-        (dut.premat_dac_trig, 23, "STATUS_PREMAT_DAC_TRIG"),
-        (dut.premat_adc_trig, 24, "STATUS_PREMAT_ADC_TRIG"),
-        (dut.premat_dac_div, 25, "STATUS_PREMAT_DAC_DIV"),
-        (dut.premat_adc_div, 26, "STATUS_PREMAT_ADC_DIV")
+        (dut.sys_en, 0x0002, "STATUS_PS_SHUTDOWN"),
+        (dut.lock_viol, 0x0204, "STATUS_LOCK_VIOL"),
+        (dut.ext_shutdown, 0x0301, "STATUS_EXT_SHUTDOWN"),
+        (dut.over_thresh, 0x0400, "STATUS_OVER_THRESH"),
+        (dut.thresh_underflow, 0x0401, "STATUS_THRESH_UNDERFLOW"),
+        (dut.thresh_overflow, 0x0402, "STATUS_THRESH_OVERFLOW"),
+        (dut.bad_trig_cmd, 0x0500, "STATUS_BAD_TRIG_CMD"),
+        (dut.trig_buf_overflow, 0x0501, "STATUS_TRIG_BUF_OVERFLOW"),
+        (dut.bad_dac_cmd, 0x0600, "STATUS_BAD_DAC_CMD"),
+        (dut.dac_cal_oob, 0x0601, "STATUS_DAC_CAL_OOB"),
+        (dut.dac_val_oob, 0x0602, "STATUS_DAC_VAL_OOB"),
+        (dut.dac_cmd_buf_underflow, 0x0603, "STATUS_DAC_BUF_UNDERFLOW"),
+        (dut.dac_cmd_buf_overflow, 0x0604, "STATUS_DAC_BUF_OVERFLOW"),
+        (dut.unexp_dac_trig, 0x0605, "STATUS_UNEXP_DAC_TRIG"),
+        (dut.bad_adc_cmd, 0x0700, "STATUS_BAD_ADC_CMD"),
+        (dut.adc_cmd_buf_underflow, 0x0701, "STATUS_ADC_BUF_UNDERFLOW"),
+        (dut.adc_cmd_buf_overflow, 0x0702, "STATUS_ADC_BUF_OVERFLOW"),
+        (dut.adc_data_buf_underflow, 0x0703, "STATUS_ADC_DATA_BUF_UNDERFLOW"),
+        (dut.adc_data_buf_overflow, 0x0704, "STATUS_ADC_DATA_BUF_OVERFLOW"),
+        (dut.unexp_adc_trig, 0x0705, "STATUS_UNEXP_ADC_TRIG")
     ]
 
     for error_signal, expected_status, status_name in error_conditions:
         tb = await normal_start_up_with_no_log(dut)
         tb.dut._log.info(f"Testing error condition: {status_name}")
 
-        # Set the error signal to 1
-        error_signal.value = 1
+        # Set the error signal
         await RisingEdge(dut.clk)
-        await RisingEdge(dut.clk)
+        if expected_status == 0x0002:
+            error_signal.value = 0
+        else:
+            error_signal.value = 1
+
+        await RisingEdge(dut.clk) # where the error is detected
+        await RisingEdge(dut.clk) # where the state is updated
 
         # Check that we are in HALTED state
         await tb.check_state_and_status(8, expected_status)
 
-        assert dut.sys_rst.value == 1, "Expected system reset"
         assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
-        assert dut.dma_en.value == 0, "Expected DMA disabled"
+        assert dut.shutdown_sense_en.value == 0, "Expected shutdown sense disabled"
+        assert dut.spi_clk_power_n == 1, "Expected SPI clock power disabled"
         assert dut.spi_en.value == 0, "Expected SPI disabled"
+        assert dut.trig_en.value == 0, "Expected trigger disabled"
         assert dut.ps_interrupt.value == 1, "Expected interrupt asserted"
 
-
-# Test runtime errors race conditions in RUNNING state, to see which error is picked up first
-@cocotb.test(skip=True)
-async def test_runtime_error_race_condition(dut):
-    tb = await normal_start_up_with_no_log(dut)
-    tb.dut._log.info("STARTING TEST: test_runtime_error_race_condition")
-
-    # An error signal
-    await Timer(tb.clk_period / 4, units=tb.time_unit)
-    dut.dac_buf_underflow.value = 0x08 # Board 3
-
-    # Another error signal slightly later but within the same clock cycle
-    await Timer(tb.clk_period / 4, units=tb.time_unit)
-    dut.adc_buf_overflow.value = 0x04 # Board 2
-
-    # Another error signal
-    await Timer(tb.clk_period / 4, units=tb.time_unit)
-    dut.premat_dac_trig.value = 0x02 # Board 1
-
-    # Let the system process the error signals
-    await tb.wait_cycles(2)
-
-    # Check that the system is in HALTED state
-    await tb.check_state(8)
-    status_info = tb.extract_state_and_status()
-    tb.dut._log.info(f"State name: {status_info['state_name']}")
-    tb.dut._log.info(f"Status name: {status_info['status_name']}")
-    tb.dut._log.info(f"Board number: {status_info['board_num']}")
-    # TO DO
-
-
-# Test dac buffer fill timeout, the system should go to HALTED state
+# Test SPI init timeout, the system should go to HALTED state
 @cocotb.test()
-async def test_dac_buffer_fill_timeout(dut):
+async def test_spi_init_timeout(dut):
     tb = await setup_testbench(dut)
-    tb.dut._log.info("STARTING TEST: test_dac_buffer_fill_timeout")
-
+    tb.dut._log.info("STARTING TEST: test_spi_init_timeout")
 
     # Initialize and reset
     await tb.reset()
 
     # Enable the system
     dut.sys_en.value = 1
-    dut.dac_buf_loaded.value = 0
+    dut.spi_off.value = 0 
 
-    # Wait for START_DMA state
-    await tb.wait_for_state(5, None, True, tb.SHUTDOWN_FORCE_DELAY + tb.SHUTDOWN_RESET_DELAY + tb.SHUTDOWN_RESET_PULSE + 5)
+    # Wait for CONFIRM_SPI_INIT state
+    await tb.wait_for_state(2, None, True, 10)
 
-    # Simulate DAC buffer timeout
-    tb.dut._log.info(f"BUF LOAD WAIT parameter is {dut.SPI_INIT_WAIT.value}")
-    tb.dut._log.info(f"Simulating DAC buffer timeout, waiting for {tb.SPI_INIT_WAIT + 1} cycles")
-    await tb.wait_cycles(tb.SPI_INIT_WAIT + 1)
+    # Simulate SPI init timeout
+    tb.dut._log.info(f"SPI INIT WAIT parameter is {dut.SPI_INIT_WAIT.value}")
+    tb.dut._log.info(f"Simulating SPI init timeout, waiting for {tb.SPI_INIT_WAIT} cycles")
+    await tb.wait_cycles(tb.SPI_INIT_WAIT)
+    await RisingEdge(dut.clk)
 
+    await ReadOnly()  # Ensure all signals are updated
     if(int(dut.timer.value) > tb.SPI_INIT_WAIT):
         tb.dut._log.info(f"timer value is {int(dut.timer.value)}, maximum wait time was {tb.SPI_INIT_WAIT}")
 
-    await tb.check_state_and_status(8, 27)  # HALTED = 8, STATUS_DAC_BUF_FILL_TIMEOUT = 27
-    assert dut.sys_rst.value == 1, "Expected system reset"
+    await tb.check_state_and_status(8, 0x0101)  # HALTED = 8, STATUS_SPI_INIT_TIMEOUT = 0x0101
     assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
-    assert dut.dma_en.value == 0, "Expected DMA disabled"
+    assert dut.shutdown_sense_en.value == 0, "Expected shutdown sense disabled"
+    assert dut.spi_clk_power_n == 1, "Expected SPI clock power disabled"
+    assert dut.spi_en.value == 0, "Expected SPI disabled"
+    assert dut.trig_en.value == 0, "Expected trigger disabled"
     assert dut.ps_interrupt.value == 1, "Expected interrupt asserted"
 
-# Test SPI timeout, the system should go to HALTED state
+# Test SPI start timeout, the system should go to HALTED state
 @cocotb.test()
-async def test_spi_timeout(dut):
+async def test_spi_start_timeout(dut):
     tb = await setup_testbench(dut)
-    tb.dut._log.info("STARTING TEST: test_spi_timeout")
+    tb.dut._log.info("STARTING TEST: test_spi_start_timeout")
 
     # Initialize and reset
     await tb.reset()
 
     # Enable the system
     dut.sys_en.value = 1
-    dut.spi_running.value = 0
+    dut.spi_off.value = 1  # SPI starts off
 
-    # Wait for START_DMA state
-    await tb.wait_for_state(5, None, True, tb.SHUTDOWN_FORCE_DELAY + tb.SHUTDOWN_RESET_DELAY + tb.SHUTDOWN_RESET_PULSE + 5)
+    # Wait for CONFIRM_SPI_START state
+    await tb.wait_for_state(6, None, True, tb.SPI_INIT_WAIT + tb.SHUTDOWN_FORCE_DELAY + tb.SHUTDOWN_RESET_DELAY + tb.SHUTDOWN_RESET_PULSE + 5)
 
-    # Simulate DAC buffer loading
-    dut.dac_buf_loaded.value = 1  # Set dac_buf_full to 1
+    # Keep SPI off (doesn't start)
     await RisingEdge(dut.clk)
-    await RisingEdge(dut.clk)
+    dut.spi_off.value = 1
 
-    # Simulate SPI timeout
+    # Simulate SPI start timeout
     tb.dut._log.info(f"SPI START WAIT parameter is {dut.SPI_START_WAIT.value}")
-    tb.dut._log.info(f"Simulating SPI timeout, waiting for {tb.SPI_START_WAIT + 1} cycles")
-    await tb.wait_cycles(tb.SPI_START_WAIT + 1)
+    tb.dut._log.info(f"Simulating SPI start timeout, waiting for {tb.SPI_START_WAIT} cycles")
+    await tb.wait_cycles(tb.SPI_START_WAIT)
+    await RisingEdge(dut.clk)
 
     if(int(dut.timer.value) > tb.SPI_START_WAIT):
         tb.dut._log.info(f"timer value is {int(dut.timer.value)}, maximum wait time was {tb.SPI_START_WAIT}")
 
-    await tb.check_state_and_status(8, 28) # HALTED = 8, STATUS_SPI_TIMEOUT = 28
-    assert dut.sys_rst.value == 1, "Expected system reset"
+    await tb.check_state_and_status(8, 0x0100) # HALTED = 8, STATUS_SPI_START_TIMEOUT = 0x0100
     assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
-    assert dut.dma_en.value == 0, "Expected DMA disabled"
+    assert dut.shutdown_sense_en.value == 0, "Expected shutdown sense disabled"
+    assert dut.spi_clk_power_n.value == 1, "Expected SPI clock power off"
     assert dut.spi_en.value == 0, "Expected SPI disabled"
     assert dut.ps_interrupt.value == 1, "Expected interrupt asserted"
 
 # Test to see if extract board number function works correctly
-# The board number is extracted from the DAC over threshold bits
+# The board number is extracted from the over threshold bits
 # The board number is the position of the first bit set to 1
-# The function should be able to extract the board number from the DAC over threshold bits
+# The function should be able to extract the board number from the over threshold bits
 @cocotb.test()
 async def test_extract_board_number(dut):
     tb = await normal_start_up_with_no_log(dut)
@@ -313,7 +296,7 @@ async def test_extract_board_number(dut):
 
     # Test each bit position 
     for i in range(8):
-        dut.dac_over_thresh.value = 1 << i
+        dut.over_thresh.value = 1 << i
         await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
 
@@ -331,51 +314,11 @@ async def test_extract_board_num_multiple_bits(dut):
     tb.dut._log.info("STARTING TEST: test_extract_board_num_multiple_bits")
 
     # Test multiple bits set
-    dut.dac_over_thresh.value = 0b00110101
+    dut.over_thresh.value = 0b00110101
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
 
     await tb.check_state(8)
     assert dut.board_num.value == 0, f"Board number should be 0 (lowest bit), got {dut.board_num.value}"
-
-# Test to see the response of the system with reset pulses of varying widths
-@cocotb.test()
-async def test_async_reset_behaviour(dut):
-    # Go to RUNNING state
-    tb = await normal_start_up_with_no_log(dut)
-    tb.dut._log.info("STARTING TEST: test_async_reset_behaviour")
-
-    # Test with a short reset pulse during RUNNING state
-    await Timer(tb.clk_period / 4, units=tb.time_unit)
-    dut.rst.value = 1
-    await Timer(tb.clk_period / 4, units=tb.time_unit)
-    tb.dut._log.info(f"Short reset pulse, reset value: {dut.rst.value}")
-    dut.sys_en.value = 0
-    dut.rst.value = 0
-    await tb.wait_cycles(10)
-
-    # Verify that the system put us back to IDLE state with proper initialization
-    await tb.check_state_and_status(1, 1) # IDLE = 1
-    assert dut.sys_rst.value == 1, "Expected system reset"
-    assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
-    assert dut.unlock_cfg.value == 1, "Expected unlock_cfg to be 1"
-
-    # Test reset during state transition
-    await normal_start_up_with_no_log(dut)
-
-    # Apply reset exactly at the same time with a condition that would cause a state transition
-    dut.ext_shutdown.value = 1
-    dut.rst.value = 1
-    await RisingEdge(dut.clk)
-    tb.dut._log.info(f"Reset during state transition, reset value: {dut.rst.value}. Ext shutdown value: {dut.ext_shutdown.value}")
-    dut.rst.value = 0
-    dut.sys_en.value = 0
-    await tb.wait_cycles(10)
-
-    # Verify that the system put us back to IDLE state with proper initialization
-    await tb.check_state_and_status(1, 1) # IDLE = 1
-    assert dut.sys_rst.value == 1, "Expected system reset"
-    assert dut.n_shutdown_force.value == 0, "Expected shutdown force"
-    assert dut.unlock_cfg.value == 1, "Expected unlock_cfg to be 1"
 
     

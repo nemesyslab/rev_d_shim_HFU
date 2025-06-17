@@ -25,8 +25,8 @@ class latch_high_base:
         """
         await RisingEdge(self.dut.clk)
         self.dut._log.info("STARTING RESET")
-        self.dut.resetn.value = 0  # Assert active-low reset
+        self.dut.resetn.value = 0 
         await RisingEdge(self.dut.clk)
         await RisingEdge(self.dut.clk)
-        self.dut.resetn.value = 1  # Deassert reset
+        self.dut.resetn.value = 1
         self.dut._log.info("RESET COMPLETE")

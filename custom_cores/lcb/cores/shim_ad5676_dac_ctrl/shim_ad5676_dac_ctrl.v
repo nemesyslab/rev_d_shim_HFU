@@ -14,7 +14,7 @@ module shim_ad5676_dac_ctrl #(
 
   input  wire        trigger,
   input  wire        ldac_shared,
-  output wire        waiting_for_trigger,
+  output wire        waiting_for_trig,
   output reg         cmd_buf_underflow,
   output reg         unexp_trig,
   output reg         bad_cmd,
@@ -64,7 +64,7 @@ module shim_ad5676_dac_ctrl #(
   wire        cancel_wait;
   // Command word toggled bits
   reg         do_ldac;
-  reg         wait_for_trigger;
+  reg         wait_for_trig;
   reg         expect_next;
   // Delay timer
   reg  [24:0] delay_timer;
@@ -72,7 +72,7 @@ module shim_ad5676_dac_ctrl #(
   reg  signed [15:0] cal_val [0:7]; // Calibration values for each channel
   // DAC control signals
   reg         read_next_dac_word;
-  reg         write_next_spi_word;
+  wire        write_next_spi_word;
   reg         dac_wr_done;
   reg  [ 5:0] dac_update_timer;
   reg  [ 2:0] dac_channel;
@@ -97,7 +97,7 @@ module shim_ad5676_dac_ctrl #(
   assign cmd_done = (state == S_IDLE && !cmd_buf_empty) 
                     || (state == S_DELAY && delay_timer == 0)
                     || (state == S_TRIG_WAIT && trigger)
-                    || (state == S_DAC_WR && dac_wr_done && !wait_for_trigger && delay_timer == 0);
+                    || (state == S_DAC_WR && dac_wr_done && !wait_for_trig && delay_timer == 0);
   assign next_cmd = cmd_done && !cmd_buf_empty;
   // Next state from upcoming command
   assign next_cmd_state =  cmd_buf_empty ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
@@ -107,19 +107,19 @@ module shim_ad5676_dac_ctrl #(
                            : (cmd_word[31:30] == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE 
                            : S_ERROR; // If command is not recognized, go to ERROR state
   // Waiting for trigger flag
-  assign waiting_for_trigger = (state == S_TRIG_WAIT);
+  assign waiting_for_trig = (state == S_TRIG_WAIT);
   // State transition
   always @(posedge clk) begin
     if (!resetn)                                  state <= S_INIT; // Reset to initial state
     else if (state == S_INIT)                     state <= S_IDLE; // Transition from INIT to IDLE
     else if (cal_oob)                             state <= S_ERROR; // Error if calibration value is out of bounds
-    else if (trigger && !waiting_for_trigger)     state <= S_ERROR; // Error if trigger occurs when not waiting for one
+    else if (trigger && !waiting_for_trig)        state <= S_ERROR; // Error if trigger occurs when not waiting for one
     else if (ldac_shared && state == S_DAC_WR)    state <= S_ERROR; // Error if global LDAC is asserted while this DAC is writing
     else if (read_next_dac_word && cmd_buf_empty) state <= S_ERROR; // Error if DAC sample is expected but buffer is empty
     else if (cmd_buf_underflow)                   state <= S_ERROR; // Error if command buffer underflows
     else if (cancel_wait)                         state <= S_IDLE; // Cancel the current wait state if cancel command is received
     else if (cmd_done)                            state <= next_cmd_state; // Transition to state of next command if command is finished
-    else if (state == S_DAC_WR && dac_wr_done)      state <= wait_for_trigger ? S_TRIG_WAIT : S_DELAY; // If the DAC write is done, go to the proper wait state
+    else if (state == S_DAC_WR && dac_wr_done)    state <= wait_for_trig ? S_TRIG_WAIT : S_DELAY; // If the DAC write is done, go to the proper wait state
     else if (state == S_DAC_WR && dac_val_oob)    state <= S_ERROR; // Error if calibrated DAC value is out of bounds
     else state <= state; // Stay in the same state if no conditions are met
   end
@@ -131,15 +131,15 @@ module shim_ad5676_dac_ctrl #(
 
 
   //// Command bits processing
-  // do_ldac, wait_for_trigger, expect_next
+  // do_ldac, wait_for_trig, expect_next
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) begin
       do_ldac <= 1'b0;
-      wait_for_trigger <= 1'b0;
+      wait_for_trig <= 1'b0;
       expect_next <= 1'b0;
     end else if (next_cmd && ((cmd_word[31:30] == CMD_NO_OP ) || (cmd_word[31:30] == CMD_DAC_WR))) begin
       do_ldac <= cmd_word[LDAC_BIT]; // Set do_ldac based on command word
-      wait_for_trigger <= cmd_word[TRIG_BIT]; // Set wait_for_trigger based on command word
+      wait_for_trig <= cmd_word[TRIG_BIT]; // Set wait_for_trig based on command word
       expect_next <= cmd_word[CONT_BIT]; // Set expect_next based on command word
     end
   end

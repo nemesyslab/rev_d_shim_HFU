@@ -102,9 +102,9 @@ module shim_hw_manager #(
               STS_THRESH_OVERFLOW         = 25'h0402;
   // Trigger buffer and commands
   localparam  STS_BAD_TRIG_CMD            = 25'h0500,
-              STS_TRIG_CMD_BUF_OVERFLOW   = 25'h0501;
+              STS_TRIG_CMD_BUF_OVERFLOW   = 25'h0501,
               STS_TRIG_DATA_BUF_UNDERFLOW = 25'h0502,
-              STS_TRIG_DATA_BUF_OVERFLOW  = 25'h0503,
+              STS_TRIG_DATA_BUF_OVERFLOW  = 25'h0503;
   // DAC buffers and commands
   localparam  STS_BAD_DAC_CMD             = 25'h0600,
               STS_DAC_CAL_OOB             = 25'h0601,

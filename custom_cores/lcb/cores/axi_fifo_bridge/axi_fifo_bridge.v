@@ -39,8 +39,8 @@ module axi_fifo_bridge #(
   input  wire                       fifo_empty,
 
   // Underflow/overflow signals for the AXI side
-  output wire                       fifo_underflow,
-  output wire                       fifo_overflow
+  output reg                        fifo_underflow,
+  output reg                        fifo_overflow
 );
 
   // Response signals

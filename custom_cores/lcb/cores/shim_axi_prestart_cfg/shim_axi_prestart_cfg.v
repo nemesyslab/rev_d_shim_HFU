@@ -25,7 +25,7 @@ module shim_axi_prestart_cfg #
   output reg  [31:0]         integ_window,
   output reg                 integ_en,
   output wire                sys_en,
-  output reg  [24:0]         buffer_reset,
+  output reg  [25:0]         buffer_reset,
 
   // Configuration bounds
   output wire  integ_thresh_avg_oob,
@@ -73,7 +73,7 @@ module shim_axi_prestart_cfg #
 
   localparam integer INTEGRATOR_THRESHOLD_AVERAGE_WIDTH = 15;
   localparam integer INTEGRATOR_WINDOW_WIDTH = 32;
-  localparam integer BUFFER_RESET_WIDTH = 25;
+  localparam integer BUFFER_RESET_WIDTH = 26;
 
   // Local capped default values
   localparam integer INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT_CAPPED = 

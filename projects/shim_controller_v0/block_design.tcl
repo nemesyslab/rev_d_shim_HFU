@@ -81,13 +81,13 @@ cell pavel-demin:user:axi_cfg_register:1.0 cfg_0 {
 auto_connect_axi 0x40200000 4K cfg_0/S_AXI /ps_0/M_AXI_GP0
 
 # LCB: Slice off bits 0 and 32 from the config register
-cell pavel-demin:user:port_slicer n_shutdown_force_slice {
+cell xilinx.com:ip:xlslice:1.0 n_shutdown_force_slice {
   DIN_WIDTH 64 DIN_FROM 0 DIN_TO 0
 } {
   din cfg_0/cfg_data
   dout n_Shutdown_Force
 }
-cell pavel-demin:user:port_slicer shutdown_reset_slice {
+cell xilinx.com:ip:xlslice:1.0 shutdown_reset_slice {
   DIN_WIDTH 64 DIN_FROM 32 DIN_TO 32
 } {
   din cfg_0/cfg_data

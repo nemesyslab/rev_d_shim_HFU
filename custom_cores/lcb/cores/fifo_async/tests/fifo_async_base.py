@@ -229,28 +229,27 @@ class fifo_async_base:
         """
         number_of_writes = len(data_list)
         data_index = 0
-        while True:
-            await RisingEdge(self.dut.wr_clk)
-            await ReadWrite()
-            fifo_full = False
-            data = data_list[data_index]
+
+        while data_index < number_of_writes:
+            await RisingEdge(self.dut.wr_clk) # Wait for clock edge
+            self.dut.wr_data.value = data_list[data_index] 
+            
+            await ReadWrite() # Allow 'full' to settle after the edge
 
             if self.dut.full.value == 1:
-                self.dut._log.info(f"Want to write 0x{data:X} but FIFO is full. Will try again in the next write cycle.")
-                self.dut.wr_en.value = 0
-                fifo_full = True
-
-            if not fifo_full:
-                self.dut._log.info(f"Writing data: 0x{data:X}")
-                self.dut.wr_data.value = data
-                data_index += 1
-
-                if data_index < number_of_writes:
-                    self.dut.wr_en.value = 1
-                    self.expected_data_q.append(int(data))  # Add to expected queue immediately
-                else:
-                    self.dut.wr_en.value = 0
-                    break  # Exit loop after writing all data
+                self.dut._log.info(f"Want to write 0x{data_list[data_index]:X} but FIFO is full. Will try again in the next write cycle.")
+                self.dut.wr_en.value = 0 # Keep wr_en de-asserted if full
+            else:
+                # FIFO is not full, proceed with write
+                self.dut.wr_en.value = 1 # Assert wr_en for this cycle
+                self.expected_data_q.append(int(data_list[data_index])) # Add to expected queue
+                self.dut._log.info(f"Writing data: 0x{data_list[data_index]:X}")
+                data_index += 1 # Advance to next data only on successful write
+        
+        # After all data has been attempted to be written, ensure wr_en is de-asserted.
+        # Wait one more cycle to ensure the last asserted wr_en takes effect.
+        await RisingEdge(self.dut.wr_clk)
+        self.dut.wr_en.value = 0
 
     async def read_back_to_back(self, count):
         """
@@ -263,28 +262,30 @@ class fifo_async_base:
         """
         read_index = 0
         read_items = []
-        while True:
-            await RisingEdge(self.dut.rd_clk)
-            await ReadWrite()
-            fifo_empty = False
+
+        while read_index < count:
+            await RisingEdge(self.dut.rd_clk) # Wait for clock edge
+            await ReadWrite() # Allow 'empty' to settle after the edge
 
             if self.dut.empty.value == 1:
                 self.dut._log.info("Want to read but FIFO is empty. Will try again in the next read cycle.")
-                self.dut.rd_en.value = 0
-                fifo_empty = True
-            
-            if not fifo_empty:
-                if read_index < count:
-                    self.dut.rd_en.value = 1
-                    await ReadOnly()  # Wait for combinational logic to settle
-                    read_val = self.dut.rd_data.value
-                    expected_val = self.expected_data_q.popleft() # Pop from expected queue before asserting rd_en
-                    read_items.append((int(read_val), int(expected_val)))
-                    self.dut._log.info(f"Reading data. Expected: 0x{expected_val:X}, Actual: 0x{int(read_val):X}")
-                    read_index += 1
-                else:
-                    self.dut.rd_en.value = 0
-                    return read_items  # Exit loop after reading the specified count
+                self.dut.rd_en.value = 0 # Keep rd_en de-asserted if empty
+            else:
+                # FIFO is not empty, proceed with read
+                self.dut.rd_en.value = 1 # Assert rd_en for this cycle
+                await ReadOnly() # Wait for combinational logic for rd_data to settle
+                
+                read_val = self.dut.rd_data.value
+                expected_val = self.expected_data_q.popleft() # Pop from expected queue
+                read_items.append((int(read_val), int(expected_val)))
+                self.dut._log.info(f"Reading data. Expected: 0x{expected_val:X}, Actual: 0x{int(read_val):X}")
+                read_index += 1 # Advance read count
+        
+        # After all reads are complete, ensure rd_en is de-asserted.
+        # Wait one more cycle to ensure the last asserted rd_en takes effect.
+        await RisingEdge(self.dut.rd_clk)
+        self.dut.rd_en.value = 0
+        return read_items
 
     async def print_fifo_status(self):
         """

@@ -137,10 +137,10 @@ async def test_fifo_async_simultaneous_read_write(dut):
         await wr_reset_task
         await rd_reset_task
 
-        # Start simultaneous write and read tasks, number of reads should be less than or equal to the number of writes or it will hang.
-        data_list = await tb.generate_random_data(10)
+        # Start simultaneous write and read tasks, number of reads should be equal to the number of writes or it will hang.
+        data_list = await tb.generate_random_data(150)
         simultaneous_wr_task = cocotb.start_soon(tb.write_back_to_back(data_list))
-        simultaneous_rd_task = cocotb.start_soon(tb.read_back_to_back(10))
+        simultaneous_rd_task = cocotb.start_soon(tb.read_back_to_back(150))
         await simultaneous_wr_task
         read_results = await simultaneous_rd_task
 

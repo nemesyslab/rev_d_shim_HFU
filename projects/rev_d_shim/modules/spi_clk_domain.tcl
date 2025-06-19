@@ -35,13 +35,16 @@ create_bd_pin -dir O -from 7 -to 0 thresh_underflow
 create_bd_pin -dir O -from 7 -to 0 thresh_overflow
 # Trigger channel status
 create_bd_pin -dir O bad_trig_cmd
+create_bd_pin -dir O trig_data_buf_overflow
 # DAC channel status
+create_bd_pin -dir O -from 7 -to 0 dac_boot_fail
 create_bd_pin -dir O -from 7 -to 0 bad_dac_cmd
 create_bd_pin -dir O -from 7 -to 0 dac_cal_oob
 create_bd_pin -dir O -from 7 -to 0 dac_val_oob
 create_bd_pin -dir O -from 7 -to 0 dac_cmd_buf_underflow
 create_bd_pin -dir O -from 7 -to 0 unexp_dac_trig
 # ADC channel status
+create_bd_pin -dir O -from 7 -to 0 adc_boot_fail
 create_bd_pin -dir O -from 7 -to 0 bad_adc_cmd
 create_bd_pin -dir O -from 7 -to 0 adc_cmd_buf_underflow
 create_bd_pin -dir O -from 7 -to 0 adc_data_buf_overflow
@@ -65,12 +68,20 @@ for {set i 1} {$i <= $board_count} {incr i} {
   create_bd_pin -dir I adc_ch${i}_data_full
 }
 # Trigger command channel
-create_bd_pin -dir I -from 31 -to 0 trigger_cmd
-create_bd_pin -dir O trigger_cmd_rd_en
-create_bd_pin -dir I trigger_cmd_empty
+create_bd_pin -dir I -from 31 -to 0 trig_cmd
+create_bd_pin -dir O trig_cmd_rd_en
+create_bd_pin -dir I trig_cmd_empty
+# Trigger data channel
+create_bd_pin -dir O -from 31 -to 0 trig_data
+create_bd_pin -dir O trig_data_wr_en
+create_bd_pin -dir I trig_data_full
+create_bd_pin -dir I trig_data_almost_full
 
-# Trigger
-create_bd_pin -dir I trigger_gated
+# External trigger
+create_bd_pin -dir I ext_trig
+
+# Block buffers on the SPI side (until HW Manager is ready)
+create_bd_pin -dir I block_buffers
 
 # SPI interface signals (out)
 create_bd_pin -dir O ldac
@@ -98,7 +109,7 @@ cell xilinx.com:ip:xlconstant:1.1 const_1 {
 
 ## SPI clock domain crossing reset (first reset)
 # Create proc_sys_reset for the synchronization reset
-cell xilinx.com:ip:proc_sys_reset:5.0 sync_rst {
+cell xilinx.com:ip:proc_sys_reset:5.0 sync_rst_core {
   C_AUX_RESET_HIGH.VALUE_SRC USER
   C_AUX_RESET_HIGH 0
 } {
@@ -106,17 +117,18 @@ cell xilinx.com:ip:proc_sys_reset:5.0 sync_rst {
   slowest_sync_clk spi_clk
 }
 ## SPI system configuration synchronization
-cell lcb:user:shim_spi_cfg_sync:1.0 spi_cfg_sync {} {
+cell lcb:user:shim_spi_cfg_sync spi_cfg_sync {} {
   spi_clk spi_clk
-  sync_resetn sync_rst/peripheral_aresetn
+  sync_resetn sync_rst_core/peripheral_aresetn
   integ_thresh_avg integ_thresh_avg
   integ_window integ_window
   integ_en integ_en
   spi_en spi_en
+  block_buffers block_buffers
 }
 ## SPI system reset
 # Create proc_sys_reset for SPI-system-wide reset
-cell xilinx.com:ip:proc_sys_reset:5.0 spi_rst {
+cell xilinx.com:ip:proc_sys_reset:5.0 spi_rst_core {
   C_AUX_RESET_HIGH.VALUE_SRC USER
   C_AUX_RESET_HIGH 0
 } {
@@ -127,7 +139,7 @@ cell xilinx.com:ip:proc_sys_reset:5.0 spi_rst {
 
 
 ## SPI system status synchronization
-cell lcb:user:shim_spi_sts_sync:1.0 spi_sts_sync {} {
+cell lcb:user:shim_spi_sts_sync spi_sts_sync {} {
   aclk aclk
   aresetn aresetn
   spi_off_stable spi_off
@@ -135,11 +147,14 @@ cell lcb:user:shim_spi_sts_sync:1.0 spi_sts_sync {} {
   thresh_underflow_stable thresh_underflow
   thresh_overflow_stable thresh_overflow
   bad_trig_cmd_stable bad_trig_cmd
+  trig_data_buf_overflow_stable trig_data_buf_overflow
+  dac_boot_fail_stable dac_boot_fail
   bad_dac_cmd_stable bad_dac_cmd
   dac_cal_oob_stable dac_cal_oob
   dac_val_oob_stable dac_val_oob
   dac_cmd_buf_underflow_stable dac_cmd_buf_underflow
   unexp_dac_trig_stable unexp_dac_trig
+  adc_boot_fail_stable adc_boot_fail
   bad_adc_cmd_stable bad_adc_cmd
   adc_cmd_buf_underflow_stable adc_cmd_buf_underflow
   adc_data_buf_overflow_stable adc_data_buf_overflow
@@ -149,17 +164,37 @@ cell lcb:user:shim_spi_sts_sync:1.0 spi_sts_sync {} {
 ##################################################
 
 ### Trigger core
-
-cell lcb:user:shim_trigger_core:1.0 trigger_core {
+## Block the command and data buffers if needed (OR block_buffers_stable with cmd_buf_empty and data_buf_full)
+cell xilinx.com:ip:util_vector_logic trig_cmd_empty_blocked {
+  C_SIZE 1
+  C_OPERATION or
+} {
+  Op1 trig_cmd_empty
+  Op2 spi_cfg_sync/block_buffers_stable
+}
+cell xilinx.com:ip:util_vector_logic trig_data_full_blocked {
+  C_SIZE 1
+  C_OPERATION or
+} {
+  Op1 trig_data_full
+  Op2 spi_cfg_sync/block_buffers_stable
+}
+## Trigger core
+cell lcb:user:shim_trigger_core trig_core {
   TRIGGER_LOCKOUT_DEFAULT 5000
 } {
   clk spi_clk
-  resetn spi_rst/peripheral_aresetn
-  cmd_word_rd_en trigger_cmd_rd_en
-  cmd_word trigger_cmd
-  cmd_buf_empty trigger_cmd_empty
-  ext_trigger trigger_gated
+  resetn spi_rst_core/peripheral_aresetn
+  cmd_word_rd_en trig_cmd_rd_en
+  cmd_word trig_cmd
+  cmd_buf_empty trig_cmd_empty_blocked/Res
+  data_word_wr_en trig_data_wr_en
+  data_word trig_data
+  data_buf_full trig_data_full_blocked/Res
+  data_buf_almost_full trig_data_almost_full
+  ext_trig ext_trig
   bad_cmd spi_sts_sync/bad_trig_cmd
+  data_buf_overflow spi_sts_sync/trig_data_buf_overflow
 } 
 
 ##################################################
@@ -169,46 +204,48 @@ for {set i 1} {$i <= $board_count} {incr i} {
   ## DAC Channel
   module spi_dac_channel dac_ch$i {
     spi_clk spi_clk
-    resetn spi_rst/peripheral_aresetn
+    resetn spi_rst_core/peripheral_aresetn
     integ_window spi_cfg_sync/integ_window_stable
     integ_thresh_avg spi_cfg_sync/integ_thresh_avg_stable
     integ_en spi_cfg_sync/integ_en_stable
     dac_cmd dac_ch${i}_cmd
     dac_cmd_rd_en dac_ch${i}_cmd_rd_en
     dac_cmd_empty dac_ch${i}_cmd_empty
-    trigger trigger_core/trigger_out
+    block_buffers spi_cfg_sync/block_buffers_stable
+    trigger trig_core/trig_out
   }
   ## ADC Channel
   module spi_adc_channel adc_ch$i {
     spi_clk spi_clk
-    resetn spi_rst/peripheral_aresetn
+    resetn spi_rst_core/peripheral_aresetn
     adc_cmd adc_ch${i}_cmd
     adc_cmd_rd_en adc_ch${i}_cmd_rd_en
     adc_cmd_empty adc_ch${i}_cmd_empty
     adc_data adc_ch${i}_data
     adc_data_wr_en adc_ch${i}_data_wr_en
     adc_data_full adc_ch${i}_data_full
-    trigger trigger_core/trigger_out
+    block_buffers spi_cfg_sync/block_buffers_stable
+    trigger trig_core/trig_out
   }
 }
 # Waiting for trigger signals
-cell xilinx.com:ip:xlconcat:2.1 dac_waiting_for_trigger_concat {
+cell xilinx.com:ip:xlconcat:2.1 dac_waiting_for_trig_concat {
   NUM_PORTS 8
 } {
-  dout trigger_core/dac_waiting_for_trigger
+  dout trig_core/dac_waiting_for_trig
 }
-cell xilinx.com:ip:xlconcat:2.1 adc_waiting_for_trigger_concat {
+cell xilinx.com:ip:xlconcat:2.1 adc_waiting_for_trig_concat {
   NUM_PORTS 8
 } {
-  dout trigger_core/adc_waiting_for_trigger
+  dout trig_core/adc_waiting_for_trig
 }
 for {set i 1} {$i <= $board_count} {incr i} {
-  wire dac_waiting_for_trigger_concat/In[expr {$i-1}] dac_ch$i/waiting_for_trigger
-  wire adc_waiting_for_trigger_concat/In[expr {$i-1}] adc_ch$i/waiting_for_trigger
+  wire dac_waiting_for_trig_concat/In[expr {$i-1}] dac_ch$i/waiting_for_trig
+  wire adc_waiting_for_trig_concat/In[expr {$i-1}] adc_ch$i/waiting_for_trig
 }
 for {set i [expr $board_count+1]} {$i <= 8} {incr i} {
-  wire dac_waiting_for_trigger_concat/In[expr {$i-1}] const_1/dout
-  wire adc_waiting_for_trigger_concat/In[expr {$i-1}] const_1/dout
+  wire dac_waiting_for_trig_concat/In[expr {$i-1}] const_1/dout
+  wire adc_waiting_for_trig_concat/In[expr {$i-1}] const_1/dout
 }
 
 
@@ -429,6 +466,19 @@ for {set i [expr $board_count+1]} {$i <= 8} {incr i} {
   wire thresh_overflow_concat/In[expr {$i-1}] const_0/dout
 }
 
+## dac_boot_fail
+cell xilinx.com:ip:xlconcat:2.1 dac_boot_fail_concat {
+  NUM_PORTS 8
+} {
+  dout spi_sts_sync/dac_boot_fail
+}
+for {set i 1} {$i <= $board_count} {incr i} {
+  wire dac_boot_fail_concat/In[expr {$i-1}] dac_ch$i/boot_fail
+}
+for {set i [expr $board_count+1]} {$i <= 8} {
+  wire dac_boot_fail_concat/In[expr {$i-1}] const_0/dout
+}
+
 ## bad_dac_cmd
 cell xilinx.com:ip:xlconcat:2.1 bad_dac_cmd_concat {
   NUM_PORTS 8
@@ -492,6 +542,19 @@ for {set i 1} {$i <= $board_count} {incr i} {
 }
 for {set i [expr $board_count+1]} {$i <= 8} {incr i} {
   wire unexp_dac_trig_concat/In[expr {$i-1}] const_0/dout
+}
+
+## adc_boot_fail
+cell xilinx.com:ip:xlconcat:2.1 adc_boot_fail_concat {
+  NUM_PORTS 8
+} {
+  dout spi_sts_sync/adc_boot_fail
+}
+for {set i 1} {$i <= $board_count} {incr i} {
+  wire adc_boot_fail_concat/In[expr {$i-1}] adc_ch$i/boot_fail
+}
+for {set i [expr $board_count+1]} {$i <= 8} {
+  wire adc_boot_fail_concat/In[expr {$i-1}] const_0/dout
 }
 
 ## bad_adc_cmd

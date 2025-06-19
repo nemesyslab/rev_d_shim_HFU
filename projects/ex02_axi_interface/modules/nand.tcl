@@ -4,13 +4,13 @@ create_bd_pin -dir I -from 63 -to 0 nand_din_concat
 create_bd_pin -dir O -from 31 -to 0 nand_res
 
 # Slice the input to get the first 32 bits
-cell pavel-demin:user:port_slicer din_slice_0 {
+cell xilinx.com:ip:xlslice:1.0 din_slice_0 {
   DIN_WIDTH 64 DIN_FROM 31 DIN_TO 0
 } {
   din nand_din_concat
 }
 # Slice the input to get the last 32 bits
-cell pavel-demin:user:port_slicer din_slice_1 {
+cell xilinx.com:ip:xlslice:1.0 din_slice_1 {
   DIN_WIDTH 64 DIN_FROM 63 DIN_TO 32
 } {
   din nand_din_concat

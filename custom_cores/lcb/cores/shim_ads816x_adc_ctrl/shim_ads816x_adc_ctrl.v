@@ -1,4 +1,4 @@
-module shim_ads8167_adc_ctrl (
+module shim_ads816x_adc_ctrl (
   input  wire        clk,
   input  wire        resetn,
 
@@ -13,7 +13,9 @@ module shim_ads8167_adc_ctrl (
   input  wire        data_buf_full,
 
   input  wire        trigger,
-  output wire        waiting_for_trigger,
+  output wire        waiting_for_trig,
+
+  output reg         boot_fail,
   output reg         cmd_buf_underflow,
   output reg         data_buf_overflow,
   output reg         unexp_trig,
@@ -58,7 +60,7 @@ module shim_ads8167_adc_ctrl (
   wire [ 2:0] next_cmd_state;
   wire        cancel_wait;
   // Command word toggled bits
-  reg         wait_for_trigger;
+  reg         wait_for_trig;
   reg         expect_next;
   // Delay timer
   reg  [24:0] delay_timer;
@@ -83,7 +85,7 @@ module shim_ads8167_adc_ctrl (
   assign cmd_done = (state == S_IDLE && !cmd_buf_empty)
                     || (state == S_DELAY && delay_timer == 0)
                     || (state == S_TRIG_WAIT && trigger)
-                    || (state == S_ADC_RD && adc_rd_done && !wait_for_trigger && delay_timer == 0);
+                    || (state == S_ADC_RD && adc_rd_done && !wait_for_trig && delay_timer == 0);
   assign next_cmd = cmd_done && !cmd_buf_empty;
   // Next state from upcoming command
   assign next_cmd_state = cmd_buf_empty ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
@@ -93,17 +95,17 @@ module shim_ads8167_adc_ctrl (
                            : (cmd_word[31:30] == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
                            : S_ERROR; // If command is unrecognized, go to ERROR state
   // Signal indicating the core is waiting for a trigger
-  assign waiting_for_trigger = (state == S_TRIG_WAIT);
+  assign waiting_for_trig = (state == S_TRIG_WAIT);
   // State transition logic
   always @(posedge clk) begin
     if (!resetn)                                  state <= S_INIT;
     else if (state == S_INIT)                     state <= S_IDLE;
-    else if (trigger && !waiting_for_trigger)     state <= S_ERROR;
+    else if (trigger && !waiting_for_trig)        state <= S_ERROR;
     else if (cmd_buf_underflow)                   state <= S_ERROR;
     else if (data_buf_overflow)                   state <= S_ERROR;
     else if (cancel_wait)                         state <= S_IDLE;
     else if (cmd_done)                            state <= next_cmd_state;
-    else if (state == S_ADC_RD && adc_rd_done)       state <= wait_for_trigger ? S_TRIG_WAIT : S_DELAY;
+    else if (state == S_ADC_RD && adc_rd_done)    state <= wait_for_trig ? S_TRIG_WAIT : S_DELAY;
     else state <= state;
   end
   // Setup done logic
@@ -115,10 +117,10 @@ module shim_ads8167_adc_ctrl (
   //// Command bits processing
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) begin
-      wait_for_trigger <= 1'b0;
+      wait_for_trig <= 1'b0;
       expect_next <= 1'b0;
     end else if (next_cmd && ((cmd_word[31:30] == CMD_NO_OP) || (cmd_word[31:30] == CMD_ADC_RD))) begin
-      wait_for_trigger <= cmd_word[TRIG_BIT];
+      wait_for_trig <= cmd_word[TRIG_BIT];
       expect_next <= cmd_word[CONT_BIT];
     end
   end
@@ -177,6 +179,9 @@ module shim_ads8167_adc_ctrl (
 
   //// ADC boot-up SPI sequence
   // TODO: Implement boot-up sequence
+  always @(posedge clk) begin
+    if (!resetn) boot_fail <= 1'b0;
+  end
 
 
   //// ADC word sequencing
@@ -210,8 +215,8 @@ module shim_ads8167_adc_ctrl (
     if (!resetn || state == S_ERROR) spi_bit <= 5'd0;
     else if (spi_bit > 0) spi_bit <= spi_bit - 1; // Shift out bits
     else if (write_next_spi_word) begin
-      if (state == S_ADC_RD) spi_bit <= 5'd16; // Start with 16 bits for ADC read
-      else if (state == S_INIT) spi_bit <= 5'd24; // Start with 24 bits for boot-up sequence
+      if (state == S_ADC_RD) spi_bit <= 5'd15; // Start with 16 bits for ADC read
+      else if (state == S_INIT) spi_bit <= 5'd23; // Start with 24 bits for boot-up sequence
     end
   end
   // n_CS signal

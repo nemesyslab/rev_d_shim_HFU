@@ -65,7 +65,7 @@ cell xilinx.com:ip:smartconnect:1.0 ps_periph_axi_intercon {
 # +2 Integrator enable (1b cap)
 # +3 Buffer reset (25b)
 # +4 Hardware enable (1b cap)
-cell lcb:user:shim_axi_prestart_cfg:1.0 axi_prestart_cfg {
+cell lcb:user:shim_axi_prestart_cfg axi_prestart_cfg {
   INTEGRATOR_THRESHOLD_AVERAGE_DEFAULT 16384
   INTEGRATOR_WINDOW_DEFAULT 5000000
   INTEG_EN_DEFAULT 1
@@ -80,7 +80,7 @@ addr 0x40000000 128 axi_prestart_cfg/S_AXI ps/M_AXI_GP0
 ##################################################
 
 ### Hardware manager
-cell lcb:user:shim_hw_manager:1.0 hw_manager {
+cell lcb:user:shim_hw_manager hw_manager {
   POWERON_WAIT   250000000
   BUF_LOAD_WAIT  250000000
   SPI_START_WAIT 250000000
@@ -102,7 +102,7 @@ cell lcb:user:shim_hw_manager:1.0 hw_manager {
 
 ## Shutdown sense
 ## Shutdown sense
-cell lcb:user:shim_shutdown_sense:1.0 shutdown_sense {
+cell lcb:user:shim_shutdown_sense shutdown_sense {
   CLK_FREQ_HZ 100000000
 } {
   clk ps/FCLK_CLK0
@@ -152,24 +152,20 @@ module spi_clk_domain spi_clk_domain {
   thresh_underflow hw_manager/thresh_underflow
   thresh_overflow hw_manager/thresh_overflow
   bad_trig_cmd hw_manager/bad_trig_cmd
+  trig_data_buf_overflow hw_manager/trig_data_buf_overflow
+  dac_boot_fail hw_manager/dac_boot_fail
   bad_dac_cmd hw_manager/bad_dac_cmd
   dac_cal_oob hw_manager/dac_cal_oob
   dac_val_oob hw_manager/dac_val_oob
   dac_cmd_buf_underflow hw_manager/dac_cmd_buf_underflow
   unexp_dac_trig hw_manager/unexp_dac_trig
+  adc_boot_fail hw_manager/adc_boot_fail
   bad_adc_cmd hw_manager/bad_adc_cmd
   adc_cmd_buf_underflow hw_manager/adc_cmd_buf_underflow
   adc_data_buf_overflow hw_manager/adc_data_buf_overflow
   unexp_adc_trig hw_manager/unexp_adc_trig
-}
-## Trigger enable AND gate
-cell xilinx.com:ip:util_vector_logic trig_en_and {
-  C_SIZE 1
-  C_OPERATION and
-} {
-  Op1 hw_manager/trig_en
-  Op2 Trigger_In
-  Res spi_clk_domain/trigger_gated
+  ext_trig Trigger_In
+  block_buffers hw_manager/block_buffers
 }
 
 ##################################################
@@ -196,9 +192,14 @@ for {set i 1} {$i <= $board_count} {incr i} {
   wire axi_spi_interface/adc_ch${i}_data_full spi_clk_domain/adc_ch${i}_data_full
 }
 # Trigger command FIFO
-wire axi_spi_interface/trigger_cmd spi_clk_domain/trigger_cmd
-wire axi_spi_interface/trigger_cmd_rd_en spi_clk_domain/trigger_cmd_rd_en
-wire axi_spi_interface/trigger_cmd_empty spi_clk_domain/trigger_cmd_empty
+wire axi_spi_interface/trig_cmd spi_clk_domain/trig_cmd
+wire axi_spi_interface/trig_cmd_rd_en spi_clk_domain/trig_cmd_rd_en
+wire axi_spi_interface/trig_cmd_empty spi_clk_domain/trig_cmd_empty
+# Trigger data FIFO
+wire axi_spi_interface/trig_data spi_clk_domain/trig_data
+wire axi_spi_interface/trig_data_wr_en spi_clk_domain/trig_data_wr_en
+wire axi_spi_interface/trig_data_full spi_clk_domain/trig_data_full
+wire axi_spi_interface/trig_data_almost_full spi_clk_domain/trig_data_almost_full
 ## Address assignment
 # DAC and ADC FIFOs
 for {set i 1} {$i <= $board_count} {incr i} {
@@ -206,14 +207,21 @@ for {set i 1} {$i <= $board_count} {incr i} {
   addr 0x800[expr {$i-1}]1000 128 axi_spi_interface/adc_cmd_fifo_${i}_axi_bridge/S_AXI ps/M_AXI_GP1
   addr 0x800[expr {$i-1}]2000 128 axi_spi_interface/adc_data_fifo_${i}_axi_bridge/S_AXI ps/M_AXI_GP1
 }
-# Trigger command FIFO
-addr 0x800[expr {$board_count}]0000 128 axi_spi_interface/trigger_cmd_fifo_axi_bridge/S_AXI ps/M_AXI_GP1
+# Trigger command and data FIFOs
+addr 0x800[expr {$board_count}]0000 128 axi_spi_interface/trig_cmd_fifo_axi_bridge/S_AXI ps/M_AXI_GP1
+addr 0x800[expr {$board_count}]1000 128 axi_spi_interface/trig_data_fifo_axi_bridge/S_AXI ps/M_AXI_GP1
 
+## AXI-domain over/underflow detection
+wire axi_spi_interface/dac_cmd_buf_overflow hw_manager/dac_cmd_buf_overflow
+wire axi_spi_interface/adc_cmd_buf_overflow hw_manager/adc_cmd_buf_overflow
+wire axi_spi_interface/adc_data_buf_underflow hw_manager/adc_data_buf_underflow
+wire axi_spi_interface/trig_cmd_buf_overflow hw_manager/trig_cmd_buf_overflow
+wire axi_spi_interface/trig_data_buf_underflow hw_manager/trig_data_buf_underflow
 
 ##################################################
 
 ### Status register
-cell pavel-demin:user:axi_sts_register:1.0 status_reg {
+cell pavel-demin:user:axi_sts_register status_reg {
   STS_DATA_WIDTH 1024
 } {
   aclk ps/FCLK_CLK0
@@ -227,11 +235,12 @@ addr 0x40100000 128 status_reg/S_AXI ps/M_AXI_GP0
 #  (95+96*(n-1)) : (64+96*(n-1)) -- 32b ADC ch(n) command FIFO status word (n=1..8)
 # (127+96*(n-1)) : (96+96*(n-1)) -- 32b ADC ch(n) data FIFO status word    (n=1..8)
 #            831 : 800           -- 32b Trigger command FIFO status word
-#           1023 : 832           -- 192b padding (reserved bits)
+#            863 : 832           -- 32b Trigger data FIFO status word
+#           1023 : 864           -- 160b reserved bits
 ## Pad reserved bits
-cell xilinx.com:ip:xlconstant:1.1 pad_192 {
+cell xilinx.com:ip:xlconstant:1.1 pad_160 {
   CONST_VAL 0
-  CONST_WIDTH 192
+  CONST_WIDTH 160
 } {}
 # Status register concatenation
 # Concatenate: hw_manager/status_word, pad_32, then for each i=1..8: dac_cmd_fifo_$i/fifo_sts_word, adc_cmd_fifo_$i/fifo_sts_word, adc_data_fifo_$i/fifo_sts_word, then pad_448
@@ -240,7 +249,7 @@ cell xilinx.com:ip:xlconcat:2.1 sts_concat {
 } {
   In0 hw_manager/status_word
   In1 axi_spi_interface/fifo_sts
-  In2 pad_192/dout
+  In2 pad_160/dout
   dout status_reg/sts_data
 }
 
@@ -250,7 +259,7 @@ cell xilinx.com:ip:xlconcat:2.1 sts_concat {
 
 ## DAC
 # (LDAC)
-cell lcb:user:differential_out_buffer:1.0 ldac_obuf {
+cell lcb:user:differential_out_buffer ldac_obuf {
   DIFF_BUFFER_WIDTH 1
 } {
   d_in spi_clk_domain/ldac
@@ -258,7 +267,7 @@ cell lcb:user:differential_out_buffer:1.0 ldac_obuf {
   diff_out_n LDAC_n
 }
 # (~DAC_CS)
-cell lcb:user:differential_out_buffer:1.0 n_dac_cs_obuf {
+cell lcb:user:differential_out_buffer n_dac_cs_obuf {
   DIFF_BUFFER_WIDTH 8
 } {
   d_in spi_clk_domain/n_dac_cs
@@ -266,7 +275,7 @@ cell lcb:user:differential_out_buffer:1.0 n_dac_cs_obuf {
   diff_out_n n_DAC_CS_n
 }
 # (DAC_MOSI)
-cell lcb:user:differential_out_buffer:1.0 dac_mosi_obuf {
+cell lcb:user:differential_out_buffer dac_mosi_obuf {
   DIFF_BUFFER_WIDTH 8
 } {
   d_in spi_clk_domain/dac_mosi
@@ -274,7 +283,7 @@ cell lcb:user:differential_out_buffer:1.0 dac_mosi_obuf {
   diff_out_n DAC_MOSI_n
 }
 # (DAC_MISO)
-cell lcb:user:differential_in_buffer:1.0 dac_miso_ibuf {
+cell lcb:user:differential_in_buffer dac_miso_ibuf {
   DIFF_BUFFER_WIDTH 8
 } {
   diff_in_p DAC_MISO_p
@@ -284,7 +293,7 @@ cell lcb:user:differential_in_buffer:1.0 dac_miso_ibuf {
 
 ## ADC
 # (~ADC_CS)
-cell lcb:user:differential_out_buffer:1.0 n_adc_cs_obuf {
+cell lcb:user:differential_out_buffer n_adc_cs_obuf {
   DIFF_BUFFER_WIDTH 8
 } {
   d_in spi_clk_domain/n_adc_cs
@@ -292,7 +301,7 @@ cell lcb:user:differential_out_buffer:1.0 n_adc_cs_obuf {
   diff_out_n n_ADC_CS_n
 }
 # (ADC_MOSI)
-cell lcb:user:differential_out_buffer:1.0 adc_mosi_obuf {
+cell lcb:user:differential_out_buffer adc_mosi_obuf {
   DIFF_BUFFER_WIDTH 8
 } {
   d_in spi_clk_domain/adc_mosi
@@ -300,7 +309,7 @@ cell lcb:user:differential_out_buffer:1.0 adc_mosi_obuf {
   diff_out_n ADC_MOSI_n
 }
 # (ADC_MISO)
-cell lcb:user:differential_in_buffer:1.0 adc_miso_ibuf {
+cell lcb:user:differential_in_buffer adc_miso_ibuf {
   DIFF_BUFFER_WIDTH 8
 } {
   diff_in_p ADC_MISO_p
@@ -310,7 +319,7 @@ cell lcb:user:differential_in_buffer:1.0 adc_miso_ibuf {
 
 ## Clocks
 # (MISO_SCK)
-cell lcb:user:differential_in_buffer:1.0 miso_sck_ibuf {
+cell lcb:user:differential_in_buffer miso_sck_ibuf {
   DIFF_BUFFER_WIDTH 8
 } {
   diff_in_p MISO_SCK_p
@@ -318,7 +327,7 @@ cell lcb:user:differential_in_buffer:1.0 miso_sck_ibuf {
   d_out spi_clk_domain/miso_sck
 }
 # (~MOSI_SCK)
-cell lcb:user:differential_out_buffer:1.0 n_mosi_sck_obuf {
+cell lcb:user:differential_out_buffer n_mosi_sck_obuf {
   DIFF_BUFFER_WIDTH 1
 } {
   d_in spi_clk/clk_out1

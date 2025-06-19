@@ -58,7 +58,7 @@ addr 0x40000000 128M hub_0/S_AXI ps/M_AXI_GP0
 ## Add a FIFO loopback on AXI hub port 0
 
 # Slice off CFG 95:64 for FIFO control
-cell pavel-demin:user:port_slicer fifo_0_cfg {
+cell xilinx.com:ip:xlslice:1.0 fifo_0_cfg {
   DIN_WIDTH 96 DIN_FROM 95 DIN_TO 64
 } {
   din hub_0/cfg_data
@@ -100,7 +100,7 @@ cell xilinx.com:ip:blk_mem_gen bram_0 {
 #   of the first 32 bits and the second 32 bits of the CFG data
 
 # Slice off CFG 63:0 for NAND input
-cell pavel-demin:user:port_slicer nand_0_cfg {
+cell xilinx.com:ip:xlslice:1.0 nand_0_cfg {
   DIN_WIDTH 96 DIN_FROM 63 DIN_TO 0
 } {
   din hub_0/cfg_data

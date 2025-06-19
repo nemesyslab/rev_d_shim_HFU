@@ -5,7 +5,7 @@ import random
 from collections import deque
 
 
-class fifo_async_count_base:
+class fifo_async_base:
 
     def __init__(self, dut, rd_clk_period=4, wr_clk_period=4, time_unit="ns"):
         self.dut = dut
@@ -21,19 +21,51 @@ class fifo_async_count_base:
         self.dut._log.info(f"FIFO PARAMETERS: DATA_WIDTH={self.DATA_WIDTH}, ADDR_WIDTH={self.ADDR_WIDTH}, "
                       f"DEPTH={self.FIFO_DEPTH}, ALMOST_FULL_THRESHOLD={self.ALMOST_FULL_THRESHOLD}, "
                       f"ALMOST_EMPTY_THRESHOLD={self.ALMOST_EMPTY_THRESHOLD}")
-        self.dut._log.info(f"Read Clock Period: {rd_clk_period} {time_unit}, Write Clock Period: {wr_clk_period} {time_unit}")
+        self.dut._log.info(f"Read Clock Period: {rd_clk_period} {time_unit}") 
+        self.dut._log.info(f"Write Clock Period: {wr_clk_period} {time_unit}")                   
 
         # Queue to store expected data for verification
         self.expected_data_q = deque()
 
-        # Start the clocks
-        cocotb.start_soon(Clock(self.dut.rd_clk, rd_clk_period, units=time_unit).start())
-        cocotb.start_soon(Clock(self.dut.wr_clk, wr_clk_period, units=time_unit).start()) 
+        self.rd_clk_period = rd_clk_period
+        self.wr_clk_period = wr_clk_period
+        self.time_unit = time_unit
+        self.rd_clk_task = None
+        self.wr_clk_task = None
 
         # Initialize input signals
         self.dut.wr_en.value = 0
         self.dut.rd_en.value = 0
         self.dut.wr_data.value = 0
+
+    async def start_clocks(self):
+        """Starts the read and write clocks and stores their Tasks."""
+        if self.rd_clk_task and self.rd_clk_task.done(): # Check if previous task is done/killed
+            self.rd_clk_task = None # Clear reference if task is no longer running
+        if self.wr_clk_task and self.wr_clk_task.done():
+            self.wr_clk_task = None
+
+        self.rd_clk_task = cocotb.start_soon(Clock(self.dut.rd_clk, self.rd_clk_period, units=self.time_unit).start())
+        self.wr_clk_task = cocotb.start_soon(Clock(self.dut.wr_clk, self.wr_clk_period, units=self.time_unit).start())
+        self.dut._log.info("Clocks started.")
+
+    async def kill_clocks(self):
+        """Kills the running read and write clock tasks."""
+        if self.rd_clk_task and not self.rd_clk_task.done():
+            self.rd_clk_task.kill()
+            self.dut._log.info("Read clock killed.")
+        else:
+            self.dut._log.info("Read clock task not active or already done.")
+
+        if self.wr_clk_task and not self.wr_clk_task.done():
+            self.wr_clk_task.kill()
+            self.dut._log.info("Write clock killed.")
+        else:
+            self.dut._log.info("Write clock task not active or already done.")
+
+        self.rd_clk_task = None  # Clear references after killing
+        self.wr_clk_task = None
+        self.dut._log.info("All clock tasks cleared.")
 
     async def wr_reset(self):
         """
@@ -66,60 +98,60 @@ class fifo_async_count_base:
     async def write(self, data):
         """
         Writes a single data item to the FIFO.
-        Will not write if the FIFO is full.
+        Will try to write again in the next cycle if the FIFO is full.
         Args:
             data (int): The data to write.
-        Returns:
-            bool: True if write was successful, False if FIFO was full.
         """
-        await RisingEdge(self.dut.wr_clk)
-        await ReadWrite()
+        while True:
+            await RisingEdge(self.dut.wr_clk)
+            await ReadWrite()
+            fifo_full = False
 
-        if self.dut.full.value == 1:
-            self.dut._log.info(f"Attempted to write 0x{data:X} but FIFO is full. Skipping write.")
-            return False
+            if self.dut.full.value == 1:
+                self.dut._log.info(f"Want to write 0x{data:X} but FIFO is full. Will try again.")
+                fifo_full = True
 
-        self.dut._log.info(f"Writing data: 0x{data:X}")
-        self.dut.wr_data.value = data
-        self.dut.wr_en.value = 1
+            if not fifo_full:
+                self.dut._log.info(f"Writing data: 0x{data:X}")
+                self.dut.wr_data.value = data
+                self.dut.wr_en.value = 1
 
-        self.expected_data_q.append(data) # Add to expected queue immediately
+                self.expected_data_q.append(data) # Add to expected queue immediately
 
-        await RisingEdge(self.dut.wr_clk)
-        self.dut.wr_en.value = 0 # Deassert write enable
-
-        return True
+                await RisingEdge(self.dut.wr_clk)
+                self.dut.wr_en.value = 0 # Deassert write enable
+                break  # Exit loop after successful write
     
     async def read(self):
         """
         Reads a single data item from the FWFT sync FIFO.
-        Will not read if the FIFO is empty.
+        Will try to read if the FIFO is empty in the next clock cycle.
         Returns:
-            tuple: (read_value, expected_value, True) if read successful, (None, None, False) if FIFO was empty.
+            tuple: (read_value, expected_value)
         """
-        await RisingEdge(self.dut.rd_clk)
-        await ReadWrite()
+        while True:
+            await RisingEdge(self.dut.rd_clk)
+            await ReadWrite()
+            fifo_empty = False
 
-        if self.dut.empty.value == 1:
-            self.dut._log.info("Attempted to read but FIFO is empty. Skipping read.")
-            return (None, None, False)
-        
-        self.dut.rd_en.value = 1
+            if self.dut.empty.value == 1:
+                self.dut._log.info("Want to read but FIFO is empty. Will try again.")
+                fifo_empty = True
+            
+            if not fifo_empty:
+                self.dut.rd_en.value = 1
 
-        await ReadOnly()  # Wait for combinational logic to settle
-        # In FWFT with registered output, rd_data presents the current head item
-        # when rd_en is low (or before the clock edge where rd_en is asserted)
-        read_val = self.dut.rd_data.value
-        expected_val = self.expected_data_q.popleft() # Pop from expected queue before asserting rd_en
+                await ReadOnly()  # Wait for combinational logic to settle
+                # In FWFT with registered output, rd_data presents the current head item
+                # when rd_en is low (or before the clock edge where rd_en is asserted)
+                read_val = self.dut.rd_data.value
+                expected_val = self.expected_data_q.popleft() # Pop from expected queue before asserting rd_en
 
-        self.dut._log.info(f"Reading data. Expected: 0x{expected_val:X}, Actual: 0x{int(read_val):X}")
+                self.dut._log.info(f"Reading data. Expected: 0x{expected_val:X}, Actual: 0x{int(read_val):X}")
 
-        
-
-        await RisingEdge(self.dut.rd_clk) # Wait for the read enable to take effect (pointer update)
-        self.dut.rd_en.value = 0 # Deassert read enable
-
-        return (read_val, expected_val, True)
+                await RisingEdge(self.dut.rd_clk) # Wait for the read enable to take effect (pointer update)
+                self.dut.rd_en.value = 0 # Deassert read enable
+                return (read_val, expected_val)
 
     async def write_burst(self, data_list):
         """

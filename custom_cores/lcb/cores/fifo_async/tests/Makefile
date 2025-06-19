@@ -1,15 +1,15 @@
--include fifo_async_count_test_setup.txt
+-include fifo_async_test_setup.txt
 SIM ?= verilator
 TOPLEVEL_LANG ?= verilog
-VERILOG_SOURCES += $(PWD)/../fifo_async_count.v
+VERILOG_SOURCES += $(PWD)/../fifo_async.v
 
-# Default values for fifo_async_count parameters
+# Default values for fifo_async parameters
 DATA_WIDTH ?= 16
 ADDR_WIDTH ?= 4
 ALMOST_FULL_THRESHOLD ?= 2
 ALMOST_EMPTY_THRESHOLD ?= 2
 
-# Enable waveform dumping for Verilator, ignore warnings and set parameters for DUT, read from fifo_async_count_test_setup.txt
+# Enable waveform dumping for Verilator, ignore warnings and set parameters for DUT, read from fifo_async_test_setup.txt
 # If the file does not exist, use default values
 EXTRA_ARGS += --trace --trace-structs -Wno-fatal --timing \
 	-pvalue+DATA_WIDTH=$(DATA_WIDTH) \
@@ -26,11 +26,11 @@ SIM_BUILD := $(RESULTS_ROOT_DIR)/sim_build
 # This will place results.xml inside our results directory
 COCOTB_RESULTS_FILE := $(RESULTS_ROOT_DIR)/results.xml
 
-fifo_async_count_test:
+fifo_async_test:
 	mkdir -p $(RESULTS_ROOT_DIR)
 	COCOTB_RESULTS_FILE=$(COCOTB_RESULTS_FILE) SIM_BUILD=$(SIM_BUILD) \
 	RESULTS_ROOT_DIR=$(RESULTS_ROOT_DIR) \
-	$(MAKE) sim MODULE=fifo_async_count_test TOPLEVEL=fifo_async_count
+	$(MAKE) sim MODULE=fifo_async_test TOPLEVEL=fifo_async
 
 clean_test:
 	rm -rf __pycache__  $(RESULTS_ROOT_DIR) dump.vcd

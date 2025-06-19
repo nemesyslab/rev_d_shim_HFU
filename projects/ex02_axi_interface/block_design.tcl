@@ -4,7 +4,7 @@
 
 # Create the PS (processing_system7)
 # Config:
-# - Unused AXI ACP port disabled
+# - Unused AXI ACP port disabled (or it will complain that the port's clock is not connected)
 # Connections:
 # - GP AXI 0 (Master) clock is connected to the processing system's first clock, FCLK_CLK0
 init_ps ps {
@@ -14,83 +14,150 @@ init_ps ps {
 }
 
 
-## Create the reset hub
-
-# Create xlconstant to hold reset high (active low)
-cell xilinx.com:ip:xlconstant const_0
+## Create the reset manager
 # Create proc_sys_reset
 # - Resetn is constant low (active high)
-cell xilinx.com:ip:proc_sys_reset rst_0 {} {
-  ext_reset_in const_0/dout
+cell xilinx.com:ip:proc_sys_reset ps_rst {} {
+  ext_reset_in ps/FCLK_RESET0_N
   slowest_sync_clk ps/FCLK_CLK0
 }
 
+################ AXI Interfaces #############
 
-## Create axi hub, where we use CFG as the inputs and STS as the outputs
+### AXI4 SmartConnect to branch to multiple AXI4 interfaces
+#   - One Subordinate/Slave interface
+#   - Four Manager/Master interfaces
+#   - Connects to the processing system's GP AXI 0 interface, and clock, and the reset manager's reset
+cell xilinx.com:ip:smartconnect:1.0 axi_smc {
+  NUM_SI 1
+  NUM_MI 4
+} {
+  aclk ps/FCLK_CLK0
+  aresetn ps_rst/peripheral_aresetn
+  S00_AXI /ps/M_AXI_GP0
+}
 
-# Create axi_hub
-# - Config width is 96 bits
+### Read/Write "CFG" config register
+## Create a read/write register with an AXI4-Lite interface
+# - Config register width is 96 bits
 #     63:0 are used for NAND example
 #     95:64 are used for FIFO control
-# - Status width is 64 bits
+# - Connect the axi_cfg to the processing system's clock and the reset manager's reset
+# - Connect the axi_cfg to the processing system's GP AXI 0 interface through the 
+#    first AXI4 SmartConnect Manager/Master port
+cell pavel-demin:user:axi_cfg_register axi_cfg {
+  DATA_WIDTH 96
+  ADDR_WIDTH 32
+} {
+  aclk ps/FCLK_CLK0
+  aresetn ps_rst/peripheral_aresetn
+  S_AXI axi_smc/M00_AXI
+}
+# Assign the address of the axi_cfg in the PS address space
+# - Offset: 0x40000000
+# - Range: 128 (minimum range size for Vivado, to 0x4000007F)
+# - End port: axi_cfg/S_AXI
+# - Start port: ps/M_AXI_GP0 (we don't need to include intermediate ports like the axi_smc)
+addr 0x40000000 128 axi_cfg/S_AXI ps/M_AXI_GP0
+
+### Read "STS" status register
+## Create a read-only status register with an AXI4-Lite interface
+# - Status register width is 64 bits
 #     31:0 are used for NAND example
 #     63:32 are used for FIFO status
-# - Connect the axi_hub to the processing system's GP AXI 0 interface
-# - Connect the axi_hub to the processing system's clock and the reset hub
-cell pavel-demin:user:axi_hub hub_0 {
-  CFG_DATA_WIDTH 96
-  STS_DATA_WIDTH 64
+# - Connect the axi_sts to the processing system's clock and the reset manager's reset
+# - Connect the axi_sts to the processing system's GP AXI 0 interface through the 
+#    second AXI4 SmartConnect Manager/Master port
+cell pavel-demin:user:axi_sts_register axi_sts {
+  DATA_WIDTH 64
+  ADDR_WIDTH 32
 } {
-  S_AXI ps/M_AXI_GP0
   aclk ps/FCLK_CLK0
-  aresetn rst_0/peripheral_aresetn
+  aresetn ps_rst/peripheral_aresetn
+  S_AXI axi_smc/M01_AXI
 }
-# Assign the address of the axi_hub in the PS address space
-# - Offset: 0x40000000
-# - Range: 128M (to 0x47FFFFFF)
-# - Subordinate Port: hub_0/S_AXI
-addr 0x40000000 128M hub_0/S_AXI ps/M_AXI_GP0
+# Assign the address of the axi_sts in the PS address space
+# - Offset: 0x41000000
+#    ( Note that offset needs to be at least as big as both of:                                   )
+#    ( - The minimum Vivado range size (128 bytes, 0x80)                                          )
+#    ( - The pagesize of the virtual memory (4KiB, 0x1000)                                        )
+#    ( We use 0x41000000 to get far past both these values because we have address space to spare )
+# - Range: 128 (minimum range size for Vivado, to 0x4100007F)
+# - End port: axi_sts/S_AXI
+# - Start port: ps/M_AXI_GP0
+addr 0x41000000 128 axi_sts/S_AXI ps/M_AXI_GP0
 
-
-
-############# FIFO and BRAM for this project #############
-
-## Add a FIFO loopback on AXI hub port 0
-
-# Slice off CFG 95:64 for FIFO control
-cell xilinx.com:ip:xlslice:1.0 fifo_0_cfg {
+### FIFO with AXI4 interface
+# Slice off CFG register bits 95:64 for FIFO control
+cell xilinx.com:ip:xlslice:1.0 axi_fifo_cfg {
   DIN_WIDTH 96 DIN_FROM 95 DIN_TO 64
 } {
-  din hub_0/cfg_data
+  din axi_cfg/cfg_data
 }
-# Create a FIFO block connected to the AXI hub (see source file)
-module fifo fifo_0 {
+# Create a FIFO with an AXI4-Lite interface using a custom module
+# This command will source its code from the `modules/fifo.tcl` file
+# - Connect the clock to the processing system's clock, FCLK_CLK0
+# - Connect the cfg word to the sliced FIFO control bits
+# - Connect the FIFO's AXI4 interface to the third AXI SmartConnect Manager/Master port
+# - The reset signal is handled internally, using the FIFO's cfg word bit 0
+module fifo axi_fifo_module {
   aclk ps/FCLK_CLK0
-  s_axis hub_0/M00_AXIS
-  m_axis hub_0/S00_AXIS
-  cfg_word fifo_0_cfg/dout
+  cfg_word axi_fifo_cfg/dout
+  s_axi axi_smc/M02_AXI
 }
+# Assign the address of the axi_fifo in the PS address space
+# - Offset: 0x42000000
+# - Range: 128 (minimum range size for Vivado, to 0x4200007F)
+# - End port: axi_fifo/s_axi
+# - Start port: ps/M_AXI_GP0
+addr 0x42000000 128 axi_fifo_module/S_AXI ps/M_AXI_GP0
 
-
-## Add a BRAM on AXI hub port 1
-
-# There are 140 36Kib (36864 bit) BRAM blocks in the Zynq-7020
-# This block has 16384 32-bit words, 512Kib (524288 bits)
-# Because of the 32-bit width, this utilizes 16 36Kib blocks
-cell xilinx.com:ip:blk_mem_gen bram_0 {
-  MEMORY_TYPE True_Dual_Port_RAM
+### BRAM with AXI4 interface
+# Create an AXI BRAM controller
+# - Set SINGLE_PORT_BRAM to 1 to interface with a single port BRAM
+# - Connect the clock to the processing system's clock, FCLK_CLK0
+# - Connect the reset to the reset manager's peripheral reset
+# - Connect the BRAM controller's AXI interface to the fourth AXI SmartConnect Manager/Master port
+cell xilinx.com:ip:axi_bram_ctrl:4.1 axi_bram_ctrl {
+  SINGLE_PORT_BRAM 1
+} {
+  s_axi_aclk ps/FCLK_CLK0
+  s_axi_aresetn ps_rst/peripheral_aresetn
+  S_AXI axi_smc/M03_AXI
+}
+# Create a BRAM block using Vivado's Block Memory Generator
+# - Set the memory type to Single_Port_RAM
+# - Set the BRAM block to Stand_Alone mode
+# - Set the byte size to 8 bits
+# - Set the write width to 32 bits
+# - Set the write depth to 16384 (512Kib, 524288 bits)
+# - Set the REGISTER_PORTA_OUTPUT_OF_MEMORY_PRIMITIVES to false to avoid extra registers
+# - Connect the BRAM controller's port A to the BRAM block's port A
+# - The BRAM block will use 16 36Kib blocks in the Zynq
+#     ( There are 140 36Kib blocks available in the Zynq-7020           )
+#     ( Note that 32x1024 of memory will use the same as 36x1024        )
+#     (  because of the available shape options for the BRAM            )
+#     ( This means that if you increase the WRITE_DEPTH_A by 1,         )
+#     (  it will use 17 blocks, even though it's still under 36Kib x 16 )
+#     ( Utlization report is in the `tmp_reports` directory once built  )
+#     ( *If you do change this, make sure to update the address range*  )
+cell xilinx.com:ip:blk_mem_gen bram {
+  MEMORY_TYPE Single_Port_RAM
   USE_BRAM_BLOCK Stand_Alone
   USE_BYTE_WRITE_ENABLE true
   BYTE_SIZE 8
   WRITE_WIDTH_A 32
   WRITE_DEPTH_A 16384
-  WRITE_WIDTH_B 32
   REGISTER_PORTA_OUTPUT_OF_MEMORY_PRIMITIVES false
-  REGISTER_PORTB_OUTPUT_OF_MEMORY_PRIMITIVES false
 } {
-  BRAM_PORTA hub_0/B01_BRAM
+  BRAM_PORTA axi_bram_ctrl/BRAM_PORTA
 }
-
+# Assign the address of the axi_bram_ctrl in the PS address space
+# - Offset: 0x43000000
+# - Range: 65536 = 64K (32 x 16384 / 8, to 0x43010000)
+# - End port: axi_bram_ctrl/S_AXI
+# - Start port: ps/M_AXI_GP0
+addr 0x43000000 64K axi_bram_ctrl/S_AXI ps/M_AXI
 
 
 ############# Simple Register Tests #############
@@ -99,15 +166,15 @@ cell xilinx.com:ip:blk_mem_gen bram_0 {
 # The first 32 bits of the STS data are the bitwise NAND 
 #   of the first 32 bits and the second 32 bits of the CFG data
 
-# Slice off CFG 63:0 for NAND input
-cell xilinx.com:ip:xlslice:1.0 nand_0_cfg {
+# Slice off CFG 63:0 for the concatenated NAND input
+cell xilinx.com:ip:xlslice:1.0 nand_module_cfg {
   DIN_WIDTH 96 DIN_FROM 63 DIN_TO 0
 } {
-  din hub_0/cfg_data
+  din axi_cfg/cfg_data
 }
 # Add a vector nand gate (see source file)
-module nand nand_0 {
-  nand_din_concat nand_0_cfg/dout
+module nand nand_module {
+  nand_din_concat nand_module_cfg/dout
 }
 
 
@@ -115,7 +182,7 @@ module nand nand_0 {
 cell xilinx.com:ip:xlconcat:2.1 sts_concat {
   NUM_PORTS 2
 } {
-  In0 nand_0/nand_res
-  In1 fifo_0/sts_word
-  dout hub_0/sts_data
+  In0 nand_module/nand_res
+  In1 axi_fifo_module/sts_word
+  dout axi_sts/sts_data
 }

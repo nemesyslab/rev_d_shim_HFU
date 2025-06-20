@@ -177,7 +177,7 @@ boot: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux/images/linux/BOOT.tar.gz
 # The necessary cores for the specific project are extracted
 # 	from `block_design.tcl` (recursively by sub-modules)
 #		by `scripts/make/get_cores_from_tcl.sh`
-tests: $(addprefix custom_cores/, $(addsuffix /tests/test_certificate, $(PROJECT_CORES)))
+tests: $(addprefix custom_cores/, $(addsuffix /tests/test_certificate, $(foreach core,$(PROJECT_CORES),$(subst /,/cores/,$(core)))))
 
 # All the cores necessary for the project
 # Separated in `tmp/cores` by vendor
@@ -220,7 +220,7 @@ petalinux_build: petalinux
 #  as well as "secondary expansion" (GNU Make 3.9) to allow for their use in the prerequisite
 custom_cores/%/tests/test_certificate: VENDOR = $(word 1,$(subst /, ,$*))
 custom_cores/%/tests/test_certificate: CORE = $(word 3,$(subst /, ,$*))
-custom_cores/%/tests/test_certificate: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v $$(wildcard custom_cores/$$(VENDOR)/cores/$$(CORE)/tests/*.py) $$(wildcard custom_cores/$$(VENDOR)/cores/$$(CORE)/submodules/*.v) scripts/make/test_core.sh
+custom_cores/%/tests/test_certificate: custom_cores/$$(VENDOR)/cores/$$(CORE)/$$(CORE).v $$(wildcard custom_cores/$$(VENDOR)/cores/$$(CORE)/tests/src/*) $$(wildcard custom_cores/$$(VENDOR)/cores/$$(CORE)/submodules/*.v) scripts/make/test_core.sh
 	@./scripts/make/status.sh "MAKING TEST CERTIFICATE FOR CORE: '$(CORE)' by '$(VENDOR)'"
 	mkdir -p $(@D)
 	scripts/make/test_core.sh $(VENDOR) $(CORE)

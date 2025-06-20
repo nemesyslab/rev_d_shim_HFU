@@ -46,10 +46,17 @@ rm -f results/results.xml
 
 # Enter the src directory where the Makefile is expected
 if [ ! -d "src" ]; then
-  echo "[CORE TESTS] ERROR: src directory not found in ${TEST_DIR}"
+  echo "[CORE TESTS]: src directory not found in ${TEST_DIR} -- assuming no tests to run."
+
+  # Write a skip on the certificate line (overwriting old one)
+  echo "Tests skipped due to no src directory on $(date +"%Y/%m/%d at %H:%M %Z") " > "${CERT_FILE}"
+  echo "[CORE TESTS] ${CORE}: Tests SKIPPED (see ${TEST_DIR}/${CERT_FILE} details)"
+
   popd >/dev/null
-  exit 1
+  exit 0
 fi
+
+echo "[CORE TESTS] Running tests for ${CORE} in ${TEST_DIR}"
 pushd src >/dev/null
 
 # Run “make test_custom_core”
@@ -76,11 +83,8 @@ else
   fi
 fi
 
-# Timestamp in “YYYY/MM/DD at HH:MM" format with timezone
-DATESTAMP=$(date +"%Y/%m/%d at %H:%M %Z")
-
 if [ "${STATUS}" == "failed tests" ]; then
-  echo "[CORE TESTS] ERROR: ${CORE} tests failed."
+  echo "[CORE TESTS] ERROR: ${CORE} tests FAILED."
   echo "See log.txt for details: ${TEST_DIR}/results/log.txt"
   popd >/dev/null
   popd >/dev/null
@@ -91,10 +95,10 @@ fi
 popd >/dev/null
 
 # Write the certificate line (overwriting old one)
-echo "${STATUS} on ${DATESTAMP}" > "${CERT_FILE}"
+echo "Tests passed on $(date +"%Y/%m/%d at %H:%M %Z")" > "${CERT_FILE}"
 
 # Return to the original directory
 popd >/dev/null
 
-echo "[CORE TESTS] ${CORE}: ${STATUS} (see ${TEST_DIR}/${CERT_FILE} and ${TEST_DIR}/results/log.txt for details)"
+echo "[CORE TESTS] ${CORE}: Tests PASSED (see ${TEST_DIR}/${CERT_FILE} and ${TEST_DIR}/results/log.txt for details)"
 exit 0

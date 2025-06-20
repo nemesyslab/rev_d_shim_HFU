@@ -45,7 +45,7 @@ pushd "${TEST_DIR}" >/dev/null
 CERT_FILE="test_certificate"
 
 # 3) by default cocotb will create a result.xml file for the test results, remove any old results.xml so we start clean
-rm -f results.xml
+rm -f results/results.xml
 
 # 4) run “make <core>_test”
 # we assume the Makefile inside tests/ defines a target named exactly "<core>_test"
@@ -53,15 +53,16 @@ if ! make "${CORE}_test"; then
   # Makefile itself failed (e.g. Verilator compile error). Mark as failure.
   STATUS="failed tests"
 else
-  # Make succeeded. Now look for results.xml in this directory.
-  if [ -f results.xml ]; then
+  # Make succeeded. Now look for results.xml in the results directory.
+  if [ -f results/results.xml ]; then
     # If there's any <failure tag in results.xml, mark as failure
-    if grep -q "<failure" results.xml; then
+    if grep -q "<failure" results/results.xml; then
       STATUS="failed tests"
     else
       STATUS="passed tests"
     fi
   else
+    echo "[CORE TESTS] WARNING: No results.xml found in ${TEST_DIR}/results" 
     # No results.xml produced → assume failure
     STATUS="failed tests"
   fi
@@ -69,6 +70,12 @@ fi
 
 # 5) timestamp in “YYYY/MM/DD at HH:MM” (Europe/Istanbul timezone)
 DATESTAMP=$(date +"%Y/%m/%d at %H:%M")
+
+if [ "${STATUS}" == "failed tests" ]; then
+  echo "[CORE TESTS] ERROR: ${CORE} tests failed."
+  popd >/dev/null
+  exit 1
+fi
 
 # 6) write the certificate line (overwriting old one)
 echo "${STATUS} on ${DATESTAMP}" > "${CERT_FILE}"

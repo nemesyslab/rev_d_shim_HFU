@@ -5,46 +5,50 @@ import atexit
 import os
 
 STATE_BIN_LABELS = {
-    1: "IDLE",
-    2: "CONFIRM_SPI_INIT",
-    3: "RELEASE_SD_F",
-    4: "PULSE_SD_RST",
-    5: "SD_RST_DELAY",
-    6: "CONFIRM_SPI_START",
-    7: "RUNNING",
-    8: "HALTED"
+    1: "S_IDLE",
+    2: "S_CONFIRM_SPI_RST",
+    3: "S_POWER_ON_CRTL_BRD",
+    4: "S_CONFIRM_SPI_START",
+    5: "S_POWER_ON_AMP_BRD",
+    6: "S_AMP_POWER_WAIT",
+    7: "S_RUNNING",
+    8: "S_HALTED"
 }
 
 STATUS_BIN_LABELS = {
-    0:    "STATUS_EMPTY",
-    1:    "STATUS_OK",
-    2:    "STATUS_PS_SHUTDOWN",
-    256:  "STATUS_SPI_START_TIMEOUT",
-    257:  "STATUS_SPI_INIT_TIMEOUT",
-    512:  "STATUS_INTEG_THRESH_AVG_OOB",
-    513:  "STATUS_INTEG_WINDOW_OOB",
-    514:  "STATUS_INTEG_EN_OOB",
-    515:  "STATUS_SYS_EN_OOB",
-    516:  "STATUS_LOCK_VIOL",
-    768:  "STATUS_SHUTDOWN_SENSE",
-    769:  "STATUS_EXT_SHUTDOWN",
-    1024: "STATUS_OVER_THRESH",
-    1025: "STATUS_THRESH_UNDERFLOW",
-    1026: "STATUS_THRESH_OVERFLOW",
-    1280: "STATUS_BAD_TRIG_CMD",
-    1281: "STATUS_TRIG_BUF_OVERFLOW",
-    1536: "STATUS_BAD_DAC_CMD",
-    1537: "STATUS_DAC_CAL_OOB",
-    1538: "STATUS_DAC_VAL_OOB",
-    1539: "STATUS_DAC_BUF_UNDERFLOW",
-    1540: "STATUS_DAC_BUF_OVERFLOW",
-    1541: "STATUS_UNEXP_DAC_TRIG",
-    1792: "STATUS_BAD_ADC_CMD",
-    1793: "STATUS_ADC_BUF_UNDERFLOW",
-    1794: "STATUS_ADC_BUF_OVERFLOW",
-    1795: "STATUS_ADC_DATA_BUF_UNDERFLOW",
-    1796: "STATUS_ADC_DATA_BUF_OVERFLOW",
-    1797: "STATUS_UNEXP_ADC_TRIG",
+    0x000: "STS_EMPTY",
+    0x001: "STS_OK",
+    0x002: "STS_PS_SHUTDOWN",
+    0x100: "STS_SPI_START_TIMEOUT",
+    0x101: "STS_SPI_INIT_TIMEOUT",
+    0x200: "STS_INTEG_THRESH_AVG_OOB",
+    0x201: "STS_INTEG_WINDOW_OOB",
+    0x202: "STS_INTEG_EN_OOB",
+    0x203: "STS_SYS_EN_OOB",
+    0x204: "STS_LOCK_VIOL",
+    0x300: "STS_SHUTDOWN_SENSE",
+    0x301: "STS_EXT_SHUTDOWN",
+    0x400: "STS_OVER_THRESH",
+    0x401: "STS_THRESH_UNDERFLOW",
+    0x402: "STS_THRESH_OVERFLOW",
+    0x500: "STS_BAD_TRIG_CMD",
+    0x501: "STS_TRIG_CMD_BUF_OVERFLOW",
+    0x502: "STS_TRIG_DATA_BUF_UNDERFLOW",
+    0x503: "STS_TRIG_DATA_BUF_OVERFLOW",
+    0x600: "STS_DAC_BOOT_FAIL",
+    0x601: "STS_BAD_DAC_CMD",
+    0x602: "STS_DAC_CAL_OOB",
+    0x603: "STS_DAC_VAL_OOB",
+    0x604: "STS_DAC_BUF_UNDERFLOW",
+    0x605: "STS_DAC_BUF_OVERFLOW",
+    0x606: "STS_UNEXP_DAC_TRIG",
+    0x700: "STS_ADC_BOOT_FAIL",
+    0x701: "STS_BAD_ADC_CMD",
+    0x702: "STS_ADC_CMD_BUF_UNDERFLOW",
+    0x703: "STS_ADC_CMD_BUF_OVERFLOW",
+    0x704: "STS_ADC_DATA_BUF_UNDERFLOW",
+    0x705: "STS_ADC_DATA_BUF_OVERFLOW",
+    0x706: "STS_UNEXP_ADC_TRIG",
 }
 
 # Coverage points for states and status codes
@@ -99,8 +103,8 @@ def sample_state_and_status_coverage(dut):
             bins = [True, False],
             rel = lambda x, y: x == y,
             at_least = 1)
-@CoverPoint("shim_hw_manager.trig_en",
-            xf = lambda dut: int(dut.trig_en.value),
+@CoverPoint("shim_hw_manager.block_buffers",
+            xf = lambda dut: int(dut.block_buffers.value),
             bins = [True, False],
             rel = lambda x, y: x == y,
             at_least = 1)
@@ -120,82 +124,92 @@ def sample_system_control_coverage(dut):
 # Coverage points for per-board signals
 @CoverPoint("shim_hw_manager.shutdown_sense",
             xf = lambda dut: int(dut.shutdown_sense.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.over_thresh",
             xf = lambda dut: int(dut.over_thresh.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.thresh_underflow",
             xf = lambda dut: int(dut.thresh_underflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.thresh_overflow",
             xf = lambda dut: int(dut.thresh_overflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
+            rel = lambda x, y: x == y,
+            at_least = 1)
+@CoverPoint("shim_hw_manager.dac_boot_fail",
+            xf = lambda dut: int(dut.dac_boot_fail.value),
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.bad_dac_cmd",
             xf = lambda dut: int(dut.bad_dac_cmd.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.dac_cal_oob",
             xf = lambda dut: int(dut.dac_cal_oob.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.dac_val_oob",
             xf = lambda dut: int(dut.dac_val_oob.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.dac_cmd_buf_underflow",
             xf = lambda dut: int(dut.dac_cmd_buf_underflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.dac_cmd_buf_overflow",
             xf = lambda dut: int(dut.dac_cmd_buf_overflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.unexp_dac_trig",
             xf = lambda dut: int(dut.unexp_dac_trig.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
+            rel = lambda x, y: x == y,
+            at_least = 1)
+@CoverPoint("shim_hw_manager.adc_boot_fail",
+            xf = lambda dut: int(dut.adc_boot_fail.value),
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.bad_adc_cmd",
             xf = lambda dut: int(dut.bad_adc_cmd.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.adc_cmd_buf_underflow",
             xf = lambda dut: int(dut.adc_cmd_buf_underflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.adc_cmd_buf_overflow",
             xf = lambda dut: int(dut.adc_cmd_buf_overflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.adc_data_buf_underflow",
             xf = lambda dut: int(dut.adc_data_buf_underflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.adc_data_buf_overflow",
             xf = lambda dut: int(dut.adc_data_buf_overflow.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.unexp_adc_trig",
             xf = lambda dut: int(dut.unexp_adc_trig.value),
-            bins = [0, 1, 2, 4, 8, 32, 64, 128],
+            bins = [0, 1, 2, 4, 8, 16, 32, 64, 128],
             rel = lambda x, y: x == y,
             at_least = 1)
 def sample_per_board_signals_coverage(dut):
@@ -204,27 +218,27 @@ def sample_per_board_signals_coverage(dut):
 # Coverage points for configuration and status signals
 @CoverPoint("shim_hw_manager.integ_thresh_avg_oob",
             xf = lambda dut: int(dut.integ_thresh_avg_oob.value),
-            bins = [True, False],
+            bins = [0, 1],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.integ_window_oob",
             xf = lambda dut: int(dut.integ_window_oob.value),
-            bins = [True, False],
+            bins = [0, 1],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.integ_en_oob",
             xf = lambda dut: int(dut.integ_en_oob.value),
-            bins = [True, False],
+            bins = [0, 1],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.sys_en_oob",
             xf = lambda dut: int(dut.sys_en_oob.value),
-            bins = [True, False],
+            bins = [0, 1],
             rel = lambda x, y: x == y,
             at_least = 1)
 @CoverPoint("shim_hw_manager.lock_viol",
             xf = lambda dut: int(dut.lock_viol.value),
-            bins = [True, False],
+            bins = [0, 1],
             rel = lambda x, y: x == y,
             at_least = 1)
 def sample_configuration_status_signals_coverage(dut):
@@ -236,8 +250,18 @@ def sample_configuration_status_signals_coverage(dut):
             bins = [True, False],
             rel = lambda x, y: x == y,
             at_least = 1)
-@CoverPoint("shim_hw_manager.trig_buf_overflow",
-            xf = lambda dut: int(dut.trig_buf_overflow.value),
+@CoverPoint("shim_hw_manager.trig_cmd_buf_overflow",
+            xf = lambda dut: int(dut.trig_cmd_buf_overflow.value),
+            bins = [True, False],
+            rel = lambda x, y: x == y,
+            at_least = 1)
+@CoverPoint("shim_hw_manager.trig_data_buf_underflow",
+            xf = lambda dut: int(dut.trig_data_buf_underflow.value),
+            bins = [True, False],
+            rel = lambda x, y: x == y,
+            at_least = 1)
+@CoverPoint("shim_hw_manager.trig_data_buf_overflow",
+            xf = lambda dut: int(dut.trig_data_buf_overflow.value),
             bins = [True, False],
             rel = lambda x, y: x == y,
             at_least = 1)
@@ -247,7 +271,7 @@ def sample_trigger_buf_and_cmd_coverage(dut):
 # PS interrupt cross coverage
 @CoverPoint("shim_hw_manager.ps_interrupt",
             xf = lambda dut: int(dut.ps_interrupt.value),
-            bins = [True, False],
+            bins = [1, 0],
             bins_labels = ["PS Interrupt Active", "PS Interrupt Inactive"],
             rel = lambda x, y: x == y,
             at_least = 1)
@@ -261,7 +285,6 @@ def sample_trigger_buf_and_cmd_coverage(dut):
                         ("IDLE", None)])
 def sample_ps_interrupt_cross_coverage(dut):
     pass
-            
 
 async def _coverage_monitor(dut):
     await RisingEdge(dut.clk)

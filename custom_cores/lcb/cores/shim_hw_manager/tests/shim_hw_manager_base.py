@@ -12,54 +12,58 @@ class shim_hw_manager_base:
 
     # State encoding dictionary
     STATES = {
-        1: "IDLE",
-        2: "CONFIRM_SPI_INIT",
-        3: "RELEASE_SD_F",
-        4: "PULSE_SD_RST",
-        5: "SD_RST_DELAY",
-        6: "CONFIRM_SPI_START",
-        7: "RUNNING",
-        8: "HALTED"
+        1: "S_IDLE",
+        2: "S_CONFIRM_SPI_RST",
+        3: "S_POWER_ON_CRTL_BRD",
+        4: "S_CONFIRM_SPI_START",
+        5: "S_POWER_ON_AMP_BRD",
+        6: "S_AMP_POWER_WAIT",
+        7: "S_RUNNING",
+        8: "S_HALTED"
     }
     
     # Status codes dictionary
     STATUS_CODES = {
-        0x0000: "STATUS_EMPTY",
-        0x0001: "STATUS_OK",
-        0x0002: "STATUS_PS_SHUTDOWN",
-        0x0100: "STATUS_SPI_START_TIMEOUT",
-        0x0101: "STATUS_SPI_INIT_TIMEOUT",
-        0x0200: "STATUS_INTEG_THRESH_AVG_OOB",
-        0x0201: "STATUS_INTEG_WINDOW_OOB",
-        0x0202: "STATUS_INTEG_EN_OOB",
-        0x0203: "STATUS_SYS_EN_OOB",
-        0x0204: "STATUS_LOCK_VIOL",
-        0x0300: "STATUS_SHUTDOWN_SENSE",
-        0x0301: "STATUS_EXT_SHUTDOWN",
-        0x0400: "STATUS_OVER_THRESH",
-        0x0401: "STATUS_THRESH_UNDERFLOW",
-        0x0402: "STATUS_THRESH_OVERFLOW",
-        0x0500: "STATUS_BAD_TRIG_CMD",
-        0x0501: "STATUS_TRIG_BUF_OVERFLOW",
-        0x0600: "STATUS_BAD_DAC_CMD",
-        0x0601: "STATUS_DAC_CAL_OOB",
-        0x0602: "STATUS_DAC_VAL_OOB",
-        0x0603: "STATUS_DAC_BUF_UNDERFLOW",
-        0x0604: "STATUS_DAC_BUF_OVERFLOW",
-        0x0605: "STATUS_UNEXP_DAC_TRIG",
-        0x0700: "STATUS_BAD_ADC_CMD",
-        0x0701: "STATUS_ADC_BUF_UNDERFLOW",
-        0x0702: "STATUS_ADC_BUF_OVERFLOW",
-        0x0703: "STATUS_ADC_DATA_BUF_UNDERFLOW",
-        0x0704: "STATUS_ADC_DATA_BUF_OVERFLOW",
-        0x0705: "STATUS_UNEXP_ADC_TRIG",
+        0x0000: "STS_EMPTY",
+        0x0001: "STS_OK",
+        0x0002: "STS_PS_SHUTDOWN",
+        0x0100: "STS_SPI_START_TIMEOUT",
+        0x0101: "STS_SPI_RESET_TIMEOUT",
+        0x0200: "STS_INTEG_THRESH_AVG_OOB",
+        0x0201: "STS_INTEG_WINDOW_OOB",
+        0x0202: "STS_INTEG_EN_OOB",
+        0x0203: "STS_SYS_EN_OOB",
+        0x0204: "STS_LOCK_VIOL",
+        0x0300: "STS_SHUTDOWN_SENSE",
+        0x0301: "STS_EXT_SHUTDOWN",
+        0x0400: "STS_OVER_THRESH",
+        0x0401: "STS_THRESH_UNDERFLOW",
+        0x0402: "STS_THRESH_OVERFLOW",
+        0x0500: "STS_BAD_TRIG_CMD",
+        0x0501: "STS_TRIG_CMD_BUF_OVERFLOW",
+        0x0502: "STS_TRIG_DATA_BUF_UNDERFLOW",
+        0x0503: "STS_TRIG_DATA_BUF_OVERFLOW",
+        0x0600: "STS_DAC_BOOT_FAIL",
+        0x0601: "STS_BAD_DAC_CMD",
+        0x0602: "STS_DAC_CAL_OOB",
+        0x0603: "STS_DAC_VAL_OOB",
+        0x0604: "STS_DAC_BUF_UNDERFLOW",
+        0x0605: "STS_DAC_BUF_OVERFLOW",
+        0x0606: "STS_UNEXP_DAC_TRIG",
+        0x0700: "STS_ADC_BOOT_FAIL",
+        0x0701: "STS_BAD_ADC_CMD",
+        0x0702: "STS_ADC_CMD_BUF_UNDERFLOW",
+        0x0703: "STS_ADC_CMD_BUF_OVERFLOW",
+        0x0704: "STS_ADC_DATA_BUF_UNDERFLOW",
+        0x0705: "STS_ADC_DATA_BUF_OVERFLOW",
+        0x0706: "STS_UNEXP_ADC_TRIG",
     }
 
     def __init__(self, dut, clk_period = 4, time_unit = "ns", 
                  SHUTDOWN_FORCE_DELAY = 25000000,
                  SHUTDOWN_RESET_PULSE = 25000,
                  SHUTDOWN_RESET_DELAY = 25000000,
-                 SPI_INIT_WAIT = 25000000,
+                 SPI_RESET_WAIT = 25000000,
                  SPI_START_WAIT = 25000000
                  ):
         """
@@ -73,7 +77,7 @@ class shim_hw_manager_base:
         self.SHUTDOWN_FORCE_DELAY = SHUTDOWN_FORCE_DELAY
         self.SHUTDOWN_RESET_PULSE = SHUTDOWN_RESET_PULSE
         self.SHUTDOWN_RESET_DELAY = SHUTDOWN_RESET_DELAY
-        self.SPI_INIT_WAIT = SPI_INIT_WAIT
+        self.SPI_RESET_WAIT = SPI_RESET_WAIT
         self.SPI_START_WAIT = SPI_START_WAIT
         
         self.clk_period = clk_period
@@ -104,9 +108,12 @@ class shim_hw_manager_base:
 
         # Trigger buffer and commands
         self.dut.bad_trig_cmd.value = 0
-        self.dut.trig_buf_overflow.value = 0
+        self.dut.trig_cmd_buf_overflow.value = 0
+        self.dut.trig_data_buf_underflow.value = 0
+        self.dut.trig_data_buf_overflow.value = 0
 
         # DAC buffers and commands (8-bit per board)
+        self.dut.dac_boot_fail.value = 0x00
         self.dut.bad_dac_cmd.value = 0x00
         self.dut.dac_cal_oob.value = 0x00
         self.dut.dac_val_oob.value = 0x00
@@ -115,6 +122,7 @@ class shim_hw_manager_base:
         self.dut.unexp_dac_trig.value = 0x00
 
         # ADC buffers and commands (8-bit per board)
+        self.dut.adc_boot_fail.value = 0x00
         self.dut.bad_adc_cmd.value = 0x00
         self.dut.adc_cmd_buf_underflow.value = 0x00
         self.dut.adc_cmd_buf_overflow.value = 0x00
@@ -128,11 +136,25 @@ class shim_hw_manager_base:
         state_int = int(state_value)
         return self.STATES.get(state_int, f"UNKNOWN_STATE({state_int})")
 
+    def get_state_value(self, state_name):
+        """Convert state name to state value"""
+        for value, name in self.STATES.items():
+            if name == state_name:
+                return value
+        raise ValueError(f"UNKNOWN_STATE_NAME: {state_name}")
+
     def get_status_name(self, status_value):
         """Convert status code value to status name"""
         # Convert BinaryValue to int
         status_int = int(status_value)
         return self.STATUS_CODES.get(status_int, f"UNKNOWN_STATUS({status_int})")
+
+    def get_status_value(self, status_name):
+        """Convert status name to status code value"""
+        for value, name in self.STATUS_CODES.items():
+            if name == status_name:
+                return value
+        raise ValueError(f"UNKNOWN_STATUS_NAME: {status_name}")
     
     def get_board_num_from_status_word(self, status_word):
         """Extract board number from status word"""
@@ -174,7 +196,7 @@ class shim_hw_manager_base:
         self.dut._log.info(f"  spi_clk_power_n: {self.dut.spi_clk_power_n.value}")
         self.dut._log.info(f"  spi_en: {self.dut.spi_en.value}")
         self.dut._log.info(f"  shutdown_sense_en: {self.dut.shutdown_sense_en.value}")
-        self.dut._log.info(f"  trig_en: {self.dut.trig_en.value}")
+        self.dut._log.info(f"  block_buffers: {self.dut.block_buffers.value}")
         self.dut._log.info(f"  n_shutdown_force: {self.dut.n_shutdown_force.value}")
         self.dut._log.info(f"  n_shutdown_rst: {self.dut.n_shutdown_rst.value}")
         self.dut._log.info(f"  ps_interrupt: {self.dut.ps_interrupt.value}")
@@ -184,10 +206,10 @@ class shim_hw_manager_base:
         """Reset the DUT using active low reset"""
         await RisingEdge(self.dut.clk)  # Wait for clock to stabilize
         self.dut.aresetn.value = 0  # Assert active low reset
-        await RisingEdge(self.dut.clk) # Where the reset is sampled
-        await RisingEdge(self.dut.clk) # 2 clock cycles after reset
+        await RisingEdge(self.dut.clk)  # Hold reset for one clock
+        await RisingEdge(self.dut.clk)  # Hold reset for a second clock
         self.dut.aresetn.value = 1  # Deassert reset
-        await RisingEdge(self.dut.clk) # Where the reset deassert is sampled
+        await RisingEdge(self.dut.clk)  # Wait for reset deassertion to propagate
         self.dut._log.info("RESET COMPLETE")
 
     async def check_state_and_status(self, expected_state, expected_status_code, expected_board_num=0):

@@ -76,7 +76,7 @@ The `shim_hw_manager` module manages the hardware system's startup, operation, a
 
 The state machine states are encoded as follows:
 - `4'd1`: `S_IDLE` - Waits for `sys_en` to go high. Checks for out-of-bounds configuration values. If any OOB condition is detected, transitions to `S_HALTED` with the corresponding status code and asserts `ps_interrupt`. If all checks pass, locks configuration and powers up the SPI clock.
-- `4'd2`: `S_CONFIRM_SPI_RST` - Waits for the SPI subsystem to be powered off (`spi_off`). If not powered off within `SPI_RST_WAIT`, transitions to `S_HALTED` with a timeout status.
+- `4'd2`: `S_CONFIRM_SPI_RST` - Waits for the SPI subsystem to be powered off (`spi_off`). If not powered off within `SPI_RESET_WAIT`, transitions to `S_HALTED` with a timeout status.
 - `4'd3`: `S_POWER_ON_CRTL_BRD` - Releases shutdown force (`n_shutdown_force` high) and waits for `SHUTDOWN_FORCE_DELAY`.
 - `4'd4`: `S_CONFIRM_SPI_START` - Enables shutdown sense, SPI clock, and SPI subsystem, then waits for the SPI subsystem to start (`spi_off` deasserted). If not started within `SPI_START_WAIT` or if any DAC/ADC boot failure occurs, transitions to `S_HALTED` with the appropriate status code.
 - `4'd5`: `S_POWER_ON_AMP_BRD` - Pulses `n_shutdown_rst` low for `SHUTDOWN_RESET_PULSE`, then sets it high again.
@@ -112,7 +112,7 @@ Status codes are 25 bits wide and include:
 - `25'h0001`: `STS_OK` - System is operating normally.
 - `25'h0002`: `STS_PS_SHUTDOWN` - Processing system shutdown.
 - `25'h0100`: `STS_SPI_START_TIMEOUT` - SPI start timeout.
-- `25'h0101`: `STS_SPI_INIT_TIMEOUT` - SPI initialization timeout.
+- `25'h0101`: `STS_SPI_RESET_TIMEOUT` - SPI initialization timeout.
 - `25'h0200`: `STS_INTEG_THRESH_AVG_OOB` - Integrator threshold average out of bounds.
 - `25'h0201`: `STS_INTEG_WINDOW_OOB` - Integrator window out of bounds.
 - `25'h0202`: `STS_INTEG_EN_OOB` - Integrator enable register out of bounds.

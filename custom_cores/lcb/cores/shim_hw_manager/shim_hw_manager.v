@@ -5,7 +5,7 @@ module shim_hw_manager #(
   parameter integer SHUTDOWN_FORCE_DELAY = 25000000, // 100 ms, Delay after releasing "n_shutdown_force" before pulsing "n_shutdown_rst"
   parameter integer SHUTDOWN_RESET_PULSE = 25000,    // 100 us, Pulse width for "n_shutdown_rst"
   parameter integer SHUTDOWN_RESET_DELAY = 25000000, // 100 ms, Delay after pulsing "n_shutdown_rst" before starting the system
-  parameter integer SPI_RST_WAIT = 25000000,   // 100 ms, Delay after starting the SPI clock before checking if the SPI subsystem is initialized to off
+  parameter integer SPI_RESET_WAIT = 25000000,   // 100 ms, Delay after starting the SPI clock before checking if the SPI subsystem is initialized to off
   parameter integer SPI_START_WAIT = 250000000  // 1 second, Delay after starting the SPI clock before halting if the SPI subsystem doesn't start
 )
 (
@@ -88,7 +88,7 @@ module shim_hw_manager #(
               STS_PS_SHUTDOWN             = 25'h0002;
   // SPI subsystem
   localparam  STS_SPI_START_TIMEOUT       = 25'h0100,
-              STS_SPI_INIT_TIMEOUT        = 25'h0101;
+              STS_SPI_RESET_TIMEOUT       = 25'h0101;
   // Pre-start configuration values
   localparam  STS_INTEG_THRESH_AVG_OOB    = 25'h0200,
               STS_INTEG_WINDOW_OOB        = 25'h0201,
@@ -116,7 +116,7 @@ module shim_hw_manager #(
               STS_DAC_BUF_OVERFLOW        = 25'h0605,
               STS_UNEXP_DAC_TRIG          = 25'h0606;
   // ADC buffers and commands
-  localparam  STS_DAC_BOOT_FAIL           = 25'h0700,
+  localparam  STS_ADC_BOOT_FAIL           = 25'h0700,
               STS_BAD_ADC_CMD             = 25'h0701,
               STS_ADC_CMD_BUF_UNDERFLOW   = 25'h0702,
               STS_ADC_CMD_BUF_OVERFLOW    = 25'h0703,
@@ -185,11 +185,11 @@ module shim_hw_manager #(
             timer <= 0;
             spi_clk_power_n <= 1;
             n_shutdown_force <= 1;
-          end else if (timer >= SPI_RST_WAIT) begin
+          end else if (timer >= SPI_RESET_WAIT) begin
             state <= S_HALTED;
             timer <= 0;
             spi_clk_power_n <= 1;
-            status_code <= STS_SPI_INIT_TIMEOUT;
+            status_code <= STS_SPI_RESET_TIMEOUT;
             ps_interrupt <= 1;
           end else begin
             timer <= timer + 1;

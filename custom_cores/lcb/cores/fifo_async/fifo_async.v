@@ -123,14 +123,14 @@ module fifo_async #(
     assign empty = (rd_ptr_bin == wr_ptr_bin_rd_clk);
 
     // ALMOST FULL calculation is done in write clock domain
-    wire [ADDR_WIDTH:0] fifo_count_wr_clk;
+    //wire [ADDR_WIDTH:0] fifo_count_wr_clk;
     assign fifo_count_wr_clk = wr_ptr_bin - rd_ptr_bin_wr_clk;
 
     // since the ptrs wrap circularily we need to be very careful with the subtractions. Best to have a test
     assign almost_full = (fifo_count_wr_clk >= ((1 << ADDR_WIDTH) - ALMOST_FULL_THRESHOLD));
 
     // ALMOST EMPTY calculation is done in read clock domain
-    wire [ADDR_WIDTH:0] fifo_count_rd_clk;
+    //wire [ADDR_WIDTH:0] fifo_count_rd_clk;
     assign fifo_count_rd_clk = wr_ptr_bin_rd_clk - rd_ptr_bin;
 
     assign almost_empty = (fifo_count_rd_clk <= ALMOST_EMPTY_THRESHOLD);

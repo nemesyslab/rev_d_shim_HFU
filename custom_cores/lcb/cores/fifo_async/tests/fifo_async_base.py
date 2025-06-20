@@ -286,6 +286,50 @@ class fifo_async_base:
         await RisingEdge(self.dut.rd_clk)
         self.dut.rd_en.value = 0
         return read_items
+    
+    async def read_side_flag_monitor(self):
+        """
+        Monitors and checks the FIFO read side flags (empty, almost empty) depending on fifo_count_rd_clk.
+        """
+        while True:
+            await RisingEdge(self.dut.rd_clk)
+            await ReadOnly()
+
+            if int(self.dut.fifo_count_rd_clk.value) == 0:
+                assert self.dut.empty.value == 1, "FIFO should be empty when fifo_count_rd_clk is 0"
+                assert self.dut.almost_empty.value == 1, "FIFO should be almost empty when fifo_count_rd_clk is 0"
+
+            if int(self.dut.fifo_count_rd_clk.value) == 1:
+                assert self.dut.empty.value == 0, "FIFO should not be empty when fifo_count_rd_clk is 1"
+
+            if int(self.dut.fifo_count_rd_clk.value) <= int(self.ALMOST_EMPTY_THRESHOLD):
+                assert self.dut.almost_empty.value == 1, "FIFO should be almost empty when fifo_count_rd_clk is less than almost empty threshold"
+
+            if int(self.dut.fifo_count_rd_clk.value) > int(self.ALMOST_EMPTY_THRESHOLD):
+                assert self.dut.almost_empty.value == 0, "FIFO should not be almost empty when fifo_count_rd_clk is greater than or equal to almost empty threshold"
+                assert self.dut.empty.value == 0, "FIFO should not be empty when fifo_count_rd_clk is greater than or equal to almost empty threshold"
+
+    async def write_side_flag_monitor(self):
+        """
+        Monitors and checks the FIFO write side flags (full, almost full) depending on fifo_count_wr_clk.
+        """
+        while True:
+            await RisingEdge(self.dut.wr_clk)
+            await ReadOnly()
+
+            if int(self.dut.fifo_count_wr_clk.value) == int(self.FIFO_DEPTH):
+                assert self.dut.full.value == 1, "FIFO should be full when fifo_count_wr_clk is equal to FIFO depth"
+                assert self.dut.almost_full.value == 1, "FIFO should be almost full when fifo_count_wr_clk is equal to FIFO depth"
+
+            if int(self.dut.fifo_count_wr_clk.value) == int(self.FIFO_DEPTH) - 1:
+                assert self.dut.full.value == 0, "FIFO should not be full when fifo_count_wr_clk is one less than FIFO depth"
+
+            if int(self.dut.fifo_count_wr_clk.value) >= int(self.FIFO_DEPTH) - int(self.ALMOST_FULL_THRESHOLD):
+                assert self.dut.almost_full.value == 1, "FIFO should be almost full when fifo_count_wr_clk is greater than or equal to almost full threshold"
+
+            if int(self.dut.fifo_count_wr_clk.value) < int(self.FIFO_DEPTH) - int(self.ALMOST_FULL_THRESHOLD):
+                assert self.dut.almost_full.value == 0, "FIFO should not be almost full when fifo_count_wr_clk is less than almost full threshold"
+                assert self.dut.full.value == 0, "FIFO should not be full when fifo_count_wr_clk is less than almost full threshold"
 
     async def print_fifo_status(self):
         """

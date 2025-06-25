@@ -51,7 +51,7 @@ if [ ! -d "${TEST_DIR}/src" ]; then
   exit 0
 fi
 
-echo "[CORE TESTS] Running tests for ${CORE} in ${TEST_DIR}"
+echo "[CORE TESTS] Running tests for ${CORE} in ${TEST_DIR} using scripts/make/cocotb.mk"
 
 # Run “make test_custom_core”
 # Makefile inside tests/src defines a target "test_custom_core"

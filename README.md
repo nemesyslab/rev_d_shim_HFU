@@ -15,12 +15,12 @@ This repository contains the source code and documentation for the Revision D Sh
 ## Sections
 
 - [Overview](#overview)
-- [Getting Started](#getting-started)
+- [Getting started](#getting-started)
 - [Building an SD card](#building-an-sd-card)
-- [Example Projects](#example-projects)
+- [Example projects](#example-projects)
 - [Testing](#testing)
 
-## Background -- Zynq 7000 Series
+## Background -- Zynq 7000 series
 
 Zynq 7000 SoCs are a series of System on Chip (SoC) devices from AMD/Xilinx that combine an ARM processor with an FPGA. There are several variants of the Zynq 7000 SoC series, including the Zynq 7010, Zynq 7020, and beyond. Different variants will have different I/O, memory, and processing capabilities, but they all share the same basic architecture, which allows most projects to be ported between them with minimal changes (unless you're at the limit of one of those resources and trying to port to a less-capable variant).
 
@@ -46,9 +46,9 @@ Finally, there's some files:
 - `Makefile`: The main Makefile that is used to build everything.
 
 
-# Getting Started
+# Getting started
 
-## Required Tools
+## Required tools
 
 This repo uses the AMD/Xilinx FPGA toolchain to build projects for the chips in the Zynq 7000 SoC series family. Below are some instructions on how to set up the tools. The versions listed are the ones that are primarily used, but other versions may work as well. If you use other versions of tools, you may need to add configuration files for them to projects (PetaLinux, in particular, changes its configuration files meaningfully between versions) -- you can read more about this in the **Configuring PetaLinux** section of the `projects/` README.
 
@@ -62,7 +62,7 @@ My process is explained below, but is definitely not the only way to do this.
 These can be installed together from the AMD unified installer (2024.2 version [here](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/2024-2.html) -- select "AMD Unified Installer for FPGAs & Adaptive SoCs 2024.2: Linux Self Extracting Web Installer", do this and everything else on the system you want these tools installed to, which is recommended to be a VM). You will need to create an AMD account to download and use the installer, but it should be free to do so. 
 
 
-### Unified Installer
+### Unified installer
 
 Follow the documentation [here](https://docs.amd.com/r/en-US/ug1144-petalinux-tools-reference-guide/Installation-Steps) -- make sure the dropdown version at the top of the documentation matches the version you're using. 
 
@@ -96,9 +96,9 @@ Running the unified installer again, back on the "**Select Product to Install**"
 
 Click Next. Accept the Licence Agreements and click Next. Just like with PetaLinux, you can leave everything as default under "**Select Destination Directory**" (the default will be `/tools/Xilinx/` and will create a `Vivado/2024.2` directory). Click Next and then Install.
 
-## Changing your default shell to Bash
+## Changing your default shell to bash
 
-PetaLinux requires the default shell to be Bash. In Ubuntu 20.04.6 (and most other Ubuntu versions), the default shell is Dash. The default shell is the `/bin/sh` file, which is a symlink to the binary of another shell. You can check your current default shell by running:
+PetaLinux requires the default shell to be bash. In Ubuntu 20.04.6 (and most other Ubuntu versions), the default shell is Dash. The default shell is the `/bin/sh` file, which is a symlink to the binary of another shell. You can check your current default shell by running:
 ```shell
 ls -l /bin/sh
 ```
@@ -108,18 +108,18 @@ lrwxrwxrwx 1 root root 4 Mar 31  2024 /bin/sh -> dash
 ```
 This means that the default shell is currently Dash. 
 
-To change it to Bash, you can run:
+To change it to bash, you can run:
 ```shell
 sudo ln -sf /bin/bash /bin/sh
 ```
-which overrides the symlink to point to Bash instead of Dash. 
+which overrides the symlink to point to bash instead of Dash. 
 
 Checking again with `ls -l /bin/sh` should now output:
 ```
 lrwxrwxrwx 1 root root 9 Apr 29 01:13 /bin/sh -> /bin/bash
 ```
 
-## Profile Setup
+## Profile setup
 
 With this repository cloned into your VM (e.g. `/home/username/rev_d_shim` or something similar), you will need to set up some environment variables and modify the Vivado init script to use this repo's scripts. At the top level of this repository, you will find a file named `environment.sh.example`. This is a template file for the environment variables that you need to set up. Copy this file and name the copy `environment.sh`. You will need to edit the following variables in this file to match your setup:
 - `REV_D_DIR`: The path to the repository root directory (e.g. `/home/username/rev_d_shim`, as above)
@@ -129,24 +129,24 @@ With this repository cloned into your VM (e.g. `/home/username/rev_d_shim` or so
 
 The remaining lines are optional or do not need to be changed:
 - `source $VIVADO_PATH/settings64.sh`: This line sources a Vivado script that sets up the terminal environment for Vivado. This should be left as is.
-- `PETALINUX_DOWNLOADS_PATH`/`PETALINUX_SSTATE_PATH`: These are optional variables only needed if you want to do offline builds with PetaLinux. See the [Optional: Building PetaLinux Offline](#optional-building-petalinux-offline) section below for more information.
+- `PETALINUX_DOWNLOADS_PATH`/`PETALINUX_SSTATE_PATH`: These are optional variables only needed if you want to do offline builds with PetaLinux. See the [Optional: PetaLinux offline build setup](#optional-building-petalinux-offline) section below for more information.
 
-With `environment.sh` set up, you will need to source it in your shell. Add the following line to one of the files that is sourced in new Bash terminals, where \[path_to_rev_d_shim\] is the path to the root of this repository (e.g. `/home/username/rev_d_shim`):
+With `environment.sh` set up, you will need to source it in your shell. Add the following line to one of the files that is sourced in new bash terminals, where \[path_to_rev_d_shim\] is the path to the root of this repository (e.g. `/home/username/rev_d_shim`):
 ```bash
 source [path_to_rev_d_shim]/environment.sh
 ```
 
-### Which Bash file to add the source line to?
+### Which bash file to add the source line to?
 
-Feel free to skip this section if you already know how to set up your Bash profile files.
+Feel free to skip this section if you already know how to set up your bash profile files.
 
-Bash has a number of profile files: `~/.bashrc`, `~/.bash_profile`, and `~/.profile` are common, as well as the lesser-used `/etc/profile` and `~/.bash_login`. Here's a short summary of [what each of those files does](https://www.baeldung.com/linux/bashrc-vs-bash-profile-vs-profile).
+bash has a number of profile files: `~/.bashrc`, `~/.bash_profile`, and `~/.profile` are common, as well as the lesser-used `/etc/profile` and `~/.bash_login`. Here's a short summary of [what each of those files does](https://www.baeldung.com/linux/bashrc-vs-bash-profile-vs-profile).
 
 My preferred way is to only have `~/.profile` and `~/.bashrc`. Here's how that works:
 
-When logging in with a terminal, you're opening an *interactive, login* shell. In this case, Bash will try to source the first of whichever is present, in order: `~/.bash_profile`, then `~/.bash_login`, then `~/.profile`. `~/.profile` is also used by some other shells like Dash.
+When logging in with a terminal, you're opening an *interactive, login* shell. In this case, bash will try to source the first of whichever is present, in order: `~/.bash_profile`, then `~/.bash_login`, then `~/.profile`. `~/.profile` is also used by some other shells like Dash.
 
-When opening a new terminal window, you're opening an *interactive, non-login* shell. In this case, Bash will source `~/.bash_rc`.
+When opening a new terminal window, you're opening an *interactive, non-login* shell. In this case, bash will source `~/.bash_rc`.
 
 `~/.profile` may contain lines sourcing `~/.bashrc`, which I would like to make sure only runs in interactive shells. To do this, I just replace any line that does so:
 ```bash
@@ -172,7 +172,7 @@ All of this gives me the following `~/.profile`, in its entirety:
 #umask 022
 
 # if running bash
-if [ -n "$BASH_VERSION" ]; then
+if [ -n "$bash_VERSION" ]; then
     # include .bashrc if it exists
     if [ -f "$HOME/.bashrc" ]; then
         if [[ $- == *i* ]]; then . "$HOME/.bashrc"; fi
@@ -202,7 +202,23 @@ However, `~/.profile` is only sourced if `~/.bash_profile` and `~/.bash_login` d
 ```
 You can do similarly with `~/.bash_login` if it exists, but I've never really seen it used.
 
-## Optional: Building PetaLinux Offline
+## Vivado init script
+
+The final required step is to pass some of the environment variables to Vivado. This is done by modifying the Vivado init script to source the `scripts/vivado/repo_paths.tcl` script from this repository. The Vivado init script can be located in one of three places. Vivado checks each in order (each overriding the last one):
+
+- Install directory (`/tools/Xilinx/Vivado/<version>/Vivado_init.tcl` by default)
+- Particular Vivado version (`~/.Xilinx/Vivado/<version>/Vivado_init.tc`)
+- Overall Vivado (`~/.Xilinx/Vivado/Vivado_init.tcl`)
+
+For personal use, I'd set it in the last location to override everything else. You can go to that location and create the `Vivado_init.tcl` file if it doesn't exist, or edit it if it does. It should look like:
+```tcl
+# Example ~/.Xilinx/Vivado/Vivado_init.tcl:
+# Set up Rev D configuration
+set rev_d_dir $::env(REV_D_DIR)
+source $rev_d_dir/scripts/vivado/repo_paths.tcl
+```
+
+## Optional: PetaLinux offline build setup
 
 The PetaLinux build process requires downloading a lot of files from the internet, which can be slow and unreliable. Depending on your network connection, this could add upwards of ten minutes to the build time. If you want to put in a bit of effort for a more reliable build process, you can download these files and store them locally, so that PetaLinux can use them without needing to download them each time.
 
@@ -301,7 +317,7 @@ sudo make install
 
 # Building an SD card
 
-This section will walk you through the build process of a fully formed bootable Micro SD card for the Snickerdoodle Black containing the Rev D Shim firmware, Linux operating system, and FPGA bitstream. If you want to understand the steps in more detail, go through the [Example Projects](#example-projects) section, which progressively build up the components and techniques used for the Rev D Shim firmware.
+This section will walk you through the build process of a fully formed bootable Micro SD card for the Snickerdoodle Black containing the Rev D Shim firmware, Linux operating system, and FPGA bitstream. If you want to understand the steps in more detail, go through the [Example projects](#example-projects) section, which progressively build up the components and techniques used for the Rev D Shim firmware.
 
 The entire build process is scripted by the `Makefile` and various shell and Tcl scripts in the `scripts/` directory. The main entry point is the `Makefile`, which will call the appropriate scripts to build the project. The default target and variables for the `Makefile` is the Rev D Shim firmware for the Snickerdoodle Black. As such, you can simply run the following command from the root of this repository to build the SD card:
 ```bash
@@ -344,7 +360,7 @@ tar -xzf out/snickerdoodle_black/1.0/BOOT.tar.gz -C [BOOT_mountpoint]
 tar -xzf out/snickerdoodle_black/1.0/rootfs.tar.gz -C [RootFS_mountpoint]
 ```
 
-If your board isn't the Snickerdoodle Black, or you want to modify the project or build your own, you should read the [Example Projects](#example-projects) section to get a sense of how everything works.
+If your board isn't the Snickerdoodle Black, or you want to modify the project or build your own, you should read the [Example projects](#example-projects) section to get a sense of how everything works.
 
 ## Building a different board, board version, or project
 
@@ -355,9 +371,9 @@ make BOARD=sdrlab_122_16 BOARD_VER=1.0 PROJECT=shim_controller_v0
 
 Boards and board versions are defined in the `boards/` directory, where the board files for a given board are given under `boards/[BOARD]/board_files/[BOARD_VER]/`. Projects are defined based on folders in the `projects/` directory, where each project has its own folder. Note that projects need to be configured to work with a specific board and board version -- this is done under `projects/[PROJECT]/cfg/[BOARD]/[BOARD_VER]/`, and requires configuration files for `petalinux` and the Vivado Xilinx Design Constraint `xdc` files. You can read more about the requirements for this configuration in the `projects/` directory's README file.
 
-## Building PetaLinux Offline
+## Building PetaLinux offline
 
-If you set up [Optional: Building PetaLinux Offline](#optional-building-petalinux-offline) above, you can include the `OFFLINE=true` variable in the `make` command to use the local files instead of downloading them. For example, to build the Rev D Shim firmware for the Snickerdoodle Black with offline PetaLinux, you can run:
+If you set up [Optional: PetaLinux offline build setup](#optional-building-petalinux-offline) above, you can include the `OFFLINE=true` variable in the `make` command to use the local files instead of downloading them. For example, to build the Rev D Shim firmware for the Snickerdoodle Black with offline PetaLinux, you can run:
 ```bash
 make OFFLINE=true
 ```
@@ -399,7 +415,7 @@ There are other specific targets in the Makefile, but I don't recommend using th
 
 Once you've built the Rev D Shim firmware, please refer to the README in the `projects/rev_d_shim/` directory for instructions on how to use it.
 
-# Example Projects
+# Example projects
 
 To understand the build processes in this repo, it's recommended to explore the example projects in the `projects/` directory, as well as the README in the `projects/` directory itself. As a quick summary, each project has its own folder, and the example projects are prefixed with `ex##_`, where `##` is the example number. They're ordered to progressively build up the scripting and configuration concepts I personally needed to learn to build the Rev D Shim firmware, so they should be a good starting point for understanding how to build your own projects. 
 
@@ -409,7 +425,7 @@ You should read through the README in each of their respective folders, but in b
 
 This example project is mostly a template for the minimum viable project. It will walk you through the basic steps that any project will use, explaining the fundamental Vivado and PetaLinux build steps, including how to incorporate basic software or files in the built SD card. This is necessary to build the Rev D Shim PS and PL components.
 
-## EX02 -- AXI Interface
+## EX02 -- AXI interface
 
 This example project explores more of the Vivado Tcl scripting capabilities and demonstrates the basic AXI interface, which will be how the Zynq's CPU / processing system (PS) communicates with the FPGA / programmable logic (PL). It includes some playground software to try out various AXI interfaces. This is necessary for the Rev D Shim firmware to actually control the hardware, as it needs to communicate with the FPGA to set the shim channels and read the buffer data (among other things).
 

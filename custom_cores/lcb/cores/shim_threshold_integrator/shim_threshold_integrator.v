@@ -217,11 +217,13 @@ module shim_threshold_integrator (
             state <= OUT_OF_BOUNDS;
           end
 
-          // Inflow timers
+          // Inflow timer
           if (inflow_chunk_timer == 0) begin // Reset inflow chunk timer
             inflow_chunk_timer <= chunk_size << 4;
             fifo_in_queue_count <= 8;
-          end
+          end else begin
+            inflow_chunk_timer <= inflow_chunk_timer - 1;
+          end // Inflow timer
 
           // Inflow FIFO counter
           if (fifo_in_queue_count != 0) begin

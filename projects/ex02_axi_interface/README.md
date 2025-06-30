@@ -1,3 +1,7 @@
+***TODO OUT OF DATE -- IN PROGRESS***
+
+---
+
 # Example 02: AXI Interface
 
 Example 02 is a demonstration of some basic AXI interfaces.

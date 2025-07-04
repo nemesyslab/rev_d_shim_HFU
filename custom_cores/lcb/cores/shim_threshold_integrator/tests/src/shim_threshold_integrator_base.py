@@ -39,6 +39,10 @@ class shim_threshold_integrator_base:
         self.TOTAL_FIFO_DEPTH = 1024
         self.channel_queues = [deque() for _ in range(8)]
 
+        # Expected values
+        self.expected_chunk_width = 0
+        self.expected_chunk_size = 0
+
 
     def get_state_name(self, state_value):
         """Get the name of the state based on its integer value from STATES dictionary."""
@@ -51,6 +55,8 @@ class shim_threshold_integrator_base:
         self.dut.resetn.value = 0
         self.driven_window_value = 0
         self.driven_threshold_average_value = 0
+        self.expected_chunk_size = 0
+        self.expected_chunk_width = 0
 
         for q in self.channel_queues:
             q.clear()
@@ -119,8 +125,12 @@ class shim_threshold_integrator_base:
                 assert int(self.dut.state.value) == 5, \
                     f"Expected state after underflow: 5 (ERROR), got: {int(self.dut.state.value)} ({self.get_state_name(self.dut.state.value)})"
 
-    async def idle_to_running_state(self):
-        """Transition from IDLE to RUNNING state, will leave the DUT at the first cycle of RUNNING state."""
+    async def idle_to_running_state(self, window_value=(2**16)-1, threshold_average_value=(2**10)-1):
+        """
+        Transition from IDLE to RUNNING state, will leave the DUT at the first cycle of RUNNING state.
+        Takes window_value and threshold_average_value as parameters.
+        Window value should not be less than 2**11, otherwise this function will work unexpectedly.
+        """
 
         await RisingEdge(self.dut.clk)
         await ReadWrite()
@@ -131,17 +141,35 @@ class shim_threshold_integrator_base:
         # Enable the DUT
         self.dut.enable.value = 1 
         
-        # Give random value to the window between 2**32-1 and 2**11
-        self.driven_window_value = random.randint(2**11, 2**32-1)
+        # Drive the window_value and threshold_average_value and store them
+        self.driven_window_value = window_value
         self.dut.window.value = self.driven_window_value
 
-        # Give random value to the threshold_average between 2**15-1 and 0
-        self.driven_threshold_average_value = random.randint(0, 2**15-1)
+        self.driven_threshold_average_value = threshold_average_value
         self.dut.threshold_average.value = self.driven_threshold_average_value
 
         # DUT should be in SETUP state
         await RisingEdge(self.dut.clk)
         await ReadWrite()
+
+        # Calculate the expected chunk width and size
+        over_thresh_expected = False
+        for i in range(31, -1, -1):
+            if (self.driven_window_value >> i) & 1:
+                if i >= 11:
+                    self.expected_chunk_width = i - 10
+                    break
+                else:
+                    over_thresh_expected = True
+                    break
+        
+        if over_thresh_expected:
+            self.dut._log.info("Disallowed size of window! This function will not work as expected.")
+            self.expected_chunk_size = 0
+            self.expected_chunk_width = 0
+        else:
+            self.expected_chunk_size = (2**self.expected_chunk_width) - 1
+
 
         # Assertions
         assert int(self.dut.window.value) == self.driven_window_value, \
@@ -152,15 +180,20 @@ class shim_threshold_integrator_base:
         
         self.dut._log.info(f"Window: {self.driven_window_value}")
         self.dut._log.info(f"Threshold Average: {self.driven_threshold_average_value}")
+        self.dut._log.info(f"Expected Chunk Width: {self.expected_chunk_width}")
+        self.dut._log.info(f"Current Chunk Width: {int(self.dut.chunk_width.value)}")
  
         assert int(self.dut.state.value) == 1, \
             f"Expected state after enabling: 1 (SETUP), got: {int(self.dut.state.value)} ({self.get_state_name(self.dut.state.value)})"
 
-        assert int(self.dut.window_reg.value) == int(self.dut.window.value) >> 4, \
-            f"Expected window_reg: {int(self.dut.window.value) >> 4}, got: {int(self.dut.window_reg.value)}"
+        assert int(self.dut.window_reg.value) == self.driven_window_value >> 4, \
+            f"Expected window_reg: {self.driven_window_value >> 4}, got: {int(self.dut.window_reg.value)}"
 
-        assert int(self.dut.threshold_average_shift.value) == int(self.dut.threshold_average.value), \
-            f"Expected threshold_average_shift: {int(self.dut.threshold_average.value)}, got: {int(self.dut.threshold_average_shift.value)}"
+        assert int(self.dut.threshold_average_shift.value) == self.driven_threshold_average_value, \
+            f"Expected threshold_average_shift: {self.driven_threshold_average_value}, got: {int(self.dut.threshold_average_shift.value)}"
+        
+        assert int(self.dut.chunk_width.value) == self.expected_chunk_width, \
+            f"Expected chunk_width: {self.expected_chunk_width}, got: {int(self.dut.chunk_width.value)}"
 
         # Wait for the DUT to transition to WAIT state
         while True:
@@ -169,15 +202,18 @@ class shim_threshold_integrator_base:
             if int(self.dut.state.value) == 2:
                 break
         
+        self.dut._log.info(f"Expected Chunk Size: {self.expected_chunk_size}")
+        self.dut._log.info(f"Current Chunk Size: {int(self.dut.chunk_size.value)}")
+
         # Assertions
         assert int(self.dut.state.value) == 2, \
             f"Expected state after setup: 2 (WAIT), got: {int(self.dut.state.value)} ({self.get_state_name(self.dut.state.value)})"
 
-        assert int(self.dut.max_value.value) == int(self.dut.threshold_average.value) * (int(self.dut.window.value) >> 4), \
-            f"Expected max_value: {int(self.dut.threshold_average.value) * (int(self.dut.window.value) >> 4)}, got: {int(self.dut.max_value.value)}"
+        assert int(self.dut.max_value.value) == self.driven_threshold_average_value * (self.driven_window_value >> 4), \
+            f"Expected max_value: {self.driven_threshold_average_value * (self.driven_window_value >> 4)}, got: {int(self.dut.max_value.value)}"
         
-        assert int(self.dut.chunk_size.value) == int(2**self.dut.chunk_width.value-1), \
-            f"Expected chunk_size: {2**self.dut.chunk_width.value-1}, got: {int(self.dut.chunk_size.value)}"
+        assert int(self.dut.chunk_size.value) == self.expected_chunk_size, \
+            f"Expected chunk_size: {self.expected_chunk_size}, got: {int(self.dut.chunk_size.value)}"
         
         # Go to RUNNING state
         await RisingEdge(self.dut.clk)
@@ -203,8 +239,16 @@ class shim_threshold_integrator_base:
         self.dut._log.info("Transitioned to RUNNING state successfully")
         self.dut._log.info(f"Window: {int(self.dut.window.value)}")
         self.dut._log.info(f"Threshold Average: {int(self.dut.threshold_average.value)}")
-        self.dut._log.info(f"Chunk Size: {int(self.dut.chunk_size.value)}")
-        self.dut._log.info(f"Max Value: {int(self.dut.max_value.value)}")
+
+        self.dut._log.info(f"Current Chunk Size: {int(self.dut.chunk_size.value)}")
+        self.dut._log.info(f"Expected Chunk Size: {self.expected_chunk_size}")
+
+        self.dut._log.info(f"Current Chunk Width: {int(self.dut.chunk_width.value)}")
+        self.dut._log.info(f"Expected Chunk Width: {self.expected_chunk_width}")
+
+        self.dut._log.info(f"Current Max Value: {int(self.dut.max_value.value)}")
+        self.dut._log.info(f"Expected Max Value: {self.driven_threshold_average_value * (self.driven_window_value >> 4)}")
+
         self.dut._log.info(f"Initial inflow_chunk_timer: {int(self.dut.inflow_chunk_timer.value)}")
         self.dut._log.info(f"Initial outflow_timer: {int(self.dut.outflow_timer.value)}")
 
@@ -327,8 +371,8 @@ class shim_threshold_integrator_base:
                     
                     # When previous_inflow_chunk_timer_value is 0, it means we are at the start of a new chunk so:
                     # Inflow chunk timer should be set to chunk_size << 4
-                    assert int(self.dut.inflow_chunk_timer.value) == int(self.dut.chunk_size.value) << 4, \
-                        f"Expected inflow_chunk_timer: {int(self.dut.chunk_size.value) << 4}, got: {int(self.dut.inflow_chunk_timer.value)}"
+                    assert int(self.dut.inflow_chunk_timer.value) == self.expected_chunk_size << 4, \
+                        f"Expected inflow_chunk_timer: {self.expected_chunk_size << 4}, got: {int(self.dut.inflow_chunk_timer.value)}"
                     # FIFO in queue count should be set to 8
                     assert int(self.dut.fifo_in_queue_count.value) == 8, \
                         f"Expected fifo_in_queue_count: 8, got: {int(self.dut.fifo_in_queue_count.value)}"
@@ -339,18 +383,18 @@ class shim_threshold_integrator_base:
             # And outflow_value[i], outflow_value_plus_one[i] and outflow_remainder[i] should be available with correct values
             # This is when chunk sums will have exited the FIFO   
             if previous_outflow_timer_value == 0:
-                assert int(self.dut.outflow_timer.value) == int(self.dut.chunk_size.value) << 4, \
-                    f"Expected outflow_timer: {int(self.dut.chunk_size.value) << 4}, got: {int(self.dut.outflow_timer.value)}"
+                assert int(self.dut.outflow_timer.value) == self.expected_chunk_size << 4, \
+                    f"Expected outflow_timer: {self.expected_chunk_size << 4}, got: {int(self.dut.outflow_timer.value)}"
                 
                 for i in range(8):
                     # Model the outflow values based on DUT
                     expected_fifo_out_chunk_sum[i] = self.channel_queues[i].popleft()
-                    expected_outflow_value[i] = expected_fifo_out_chunk_sum[i] >> int(self.dut.chunk_width.value)
-                    expected_outflow_value_plus_one[i] = (expected_fifo_out_chunk_sum[i] >> int(self.dut.chunk_width.value)) + 1
-                    expected_outflow_remainder[i] = expected_fifo_out_chunk_sum[i] % int(self.dut.chunk_size.value)
+                    expected_outflow_value[i] = expected_fifo_out_chunk_sum[i] >> self.expected_chunk_width
+                    expected_outflow_value_plus_one[i] = (expected_fifo_out_chunk_sum[i] >> self.expected_chunk_width) + 1
+                    expected_outflow_remainder[i] = expected_fifo_out_chunk_sum[i] % self.expected_chunk_size
 
                     # Real average of outflow value
-                    expected_float_outflow_value[i] = expected_fifo_out_chunk_sum[i] / (2**int(self.dut.chunk_width.value))
+                    expected_float_outflow_value[i] = expected_fifo_out_chunk_sum[i] / (2**self.expected_chunk_width)
 
                     self.dut._log.info(f"Expected fifo_out_chunk_sum[{i}]: {expected_fifo_out_chunk_sum[i]}")
                     self.dut._log.info(f"Current fifo_out_chunk_sum[{i}]: {int(self.dut.queued_fifo_out_chunk_sum[i].value)}")

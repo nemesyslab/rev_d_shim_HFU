@@ -188,8 +188,8 @@ module shim_ad5676_dac_ctrl #(
                  || (state == S_DAC_WR && ldac_shared) // Unexpected LDAC assertion
                  || (next_cmd && next_cmd_state == S_ERROR) // Bad command
                  || (((cmd_done && expect_next) || read_next_dac_val_pair) && cmd_buf_empty) // Command buffer underflow
-                 || cal_oob; // Calibration value out of bounds
-                 || dac_val_oob; // DAC value out of bounds
+                 || cal_oob // Calibration value out of bounds
+                 || dac_val_oob // DAC value out of bounds
                  || boot_fail; // Boot fail flag
   // Unexpected trigger
   always @(posedge clk) begin
@@ -364,8 +364,8 @@ module shim_ad5676_dac_ctrl #(
     else if (n_cs_timer > 0) n_cs_timer <= n_cs_timer - 1;
     running_n_cs_timer <= (n_cs_timer > 0); // Flag to indicate if CS timer is running
   end
-  // ~(Chip Select) (n_cs) has been high for the required time
-  assign cs_wait_done = (state == DAC_WR && running_n_cs_timer && n_cs_timer == 0);
+  // ~(Chip Select) (n_cs) has been high for the required time (timer went from nonzero to zero)
+  assign cs_wait_done = (running_n_cs_timer && n_cs_timer == 0);
   // ~(Chip Select) (n_cs) signal
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs <= 1'b1; // Reset n_CS on reset or error

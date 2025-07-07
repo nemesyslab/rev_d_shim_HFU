@@ -130,7 +130,7 @@ module shim_ads816x_adc_ctrl #(
   // Next state from upcoming command
   assign next_cmd_state = cmd_buf_empty ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
                            : (cmd_word[31:30] == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
-                           : (cmd_word[31:30] == CMD_ADC_RD) ? S_ADC_RD // If command is DAC write, go to DAC_WR state
+                           : (cmd_word[31:30] == CMD_ADC_RD) ? S_ADC_RD // If command is ADC read, go to ADC read state
                            : (cmd_word[31:30] == CMD_SET_ORD) ? S_IDLE // If command is SET_ORD, go to IDLE
                            : (cmd_word[31:30] == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
                            : S_ERROR; // If command is unrecognized, go to ERROR state
@@ -184,7 +184,7 @@ module shim_ads816x_adc_ctrl #(
   assign error = (state != S_TRIG_WAIT && trigger)
                  || (next_cmd && next_cmd_state == S_ERROR)
                  || (cmd_done && expect_next && cmd_buf_empty)
-                 || (state == S_ADC_RD && data_buf_full)
+                 || (state == S_ADC_RD && data_buf_full);
   // Unexpected trigger
   always @(posedge clk) begin
     if (!resetn) unexp_trig <= 1'b0;
@@ -268,8 +268,8 @@ module shim_ads816x_adc_ctrl #(
     else if (n_cs_timer > 0) n_cs_timer <= n_cs_timer - 1;
     running_n_cs_timer <= (n_cs_timer > 0); // Flag to indicate if CS timer is running
   end
-  // ~(Chip Select) (n_cs) has been high for the required time
-  assign cs_wait_done = (state == DAC_WR && running_n_cs_timer && n_cs_timer == 0);
+  // ~(Chip Select) (n_cs) has been high for the required time (timer went from nonzero to zero)
+  assign cs_wait_done = (running_n_cs_timer && n_cs_timer == 0);
   // ~(Chip Select) (n_cs) signal
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs <= 1'b1; // Reset n_CS on reset or error

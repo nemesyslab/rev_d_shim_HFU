@@ -233,7 +233,7 @@ async def test_running_state_w_set_window_and_set_threshold_average(dut):
         await RisingEdge(dut.clk)
         state_transition_monitor_and_scoreboard_task.kill()
 
-@cocotb.test(skip=True)
+@cocotb.test()
 async def test_running_state_w_random_window_and_random_threshold_average(dut):
 
     modes = [

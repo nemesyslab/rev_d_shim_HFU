@@ -122,7 +122,7 @@ module shim_ad5676_dac_ctrl #(
   wire        start_miso; // Indicate whether to read the MISO data
   wire        n_miso_data_ready_mosi_clk; // Indicate whether the MISO data is ready to be read in MOSI clock domain
   wire [15:0] miso_data_mosi_clk; // MISO data in MOSI clock domain
-  wire        readback_match; // Indicate whether the readback matches the expected value
+  wire        boot_readback_match; // Indicate whether the readback matches the expected value
 
 
   //// State machine transitions
@@ -160,7 +160,7 @@ module shim_ad5676_dac_ctrl #(
   end
   // Setup done
   always @(posedge clk) begin
-    if (!resetn || (state == S_ERROR)) setup_done <= 1'b0; // Reset setup done on reset or error
+    if (!resetn || state == S_ERROR) setup_done <= 1'b0; // Reset setup done on reset or error
     else if ((state == S_TEST_RD) && ~n_miso_data_ready_mosi_clk && readout_match) setup_done <= 1'b1;
   end
 
@@ -196,7 +196,7 @@ module shim_ad5676_dac_ctrl #(
 
   //// Errors
   // Error flag
-  assign error = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && ~readback_match) // Readback mismatch (boot fail)
+  assign error = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && ~boot_readback_match) // Readback mismatch (boot fail)
                  || (state != S_TRIG_WAIT && trigger) // Unexpected trigger
                  || (state == S_DAC_WR && ldac_shared) // Unexpected LDAC assertion
                  || (next_cmd && next_cmd_state == S_ERROR) // Bad command
@@ -204,10 +204,10 @@ module shim_ad5676_dac_ctrl #(
                  || cal_oob // Calibration value out of bounds
                  || dac_val_oob // DAC value out of bounds
   // Boot check fail
-  assign readback_match = (miso_data_mosi_clk == DAC_TEST_VAL); // Readback matches the test value
+  assign boot_readback_match = (miso_data_mosi_clk == DAC_TEST_VAL); // Readback matches the test value
   always @(posedge clk) begin
     if (!resetn) boot_fail <= 1'b0; // Reset boot fail on reset
-    if (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk) boot_fail <= ~readback_match; 
+    if (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk) boot_fail <= ~boot_readback_match; 
   end
   // Unexpected trigger
   always @(posedge clk) begin

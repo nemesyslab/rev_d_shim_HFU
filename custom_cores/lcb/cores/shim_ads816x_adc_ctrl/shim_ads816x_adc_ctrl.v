@@ -125,6 +125,9 @@ module shim_ads816x_adc_ctrl #(
   wire        n_miso_data_ready_mosi_clk; // Indicate whether the MISO data is ready to be read in MOSI clock domain
   wire [15:0] miso_data_mosi_clk; // MISO data in MOSI clock domain
   wire        boot_readback_match; // Indicate whether the readback matches the expected value
+  reg  [15:0] miso_data_storage; // Store one 16-bit MISO word before writing to the data buffer
+  reg         miso_stored; // Indicate whether the MISO data has been stored
+  wire        try_data_write;
 
   //// State machine transitions
   // Allows a cancel command to cancel a delay or trigger wait
@@ -194,7 +197,7 @@ module shim_ads816x_adc_ctrl #(
                  || (state != S_TRIG_WAIT && trigger)
                  || (next_cmd && next_cmd_state == S_ERROR)
                  || (cmd_done && expect_next && cmd_buf_empty)
-                 || (state == S_ADC_RD && data_buf_full);
+                 || (try_data_write && data_buf_full);
   // Boot check fail
   assign boot_readback_match = (miso_data_mosi_clk[15:8] == SET_OTF_CFG_DATA); // Readback matches the test value
   always @(posedge clk) begin
@@ -219,7 +222,7 @@ module shim_ads816x_adc_ctrl #(
   // Data buffer overflow
   always @(posedge clk) begin
     if (!resetn) data_buf_overflow <= 1'b0;
-    else if (state == S_ADC_RD && data_buf_full) data_buf_overflow <= 1'b1;
+    else if (try_data_write && data_buf_full) data_buf_overflow <= 1'b1;
   end
 
   //// Sample order
@@ -355,6 +358,28 @@ module shim_ads816x_adc_ctrl #(
     else if (start_miso) miso_shift_reg <= {14'd0, miso}; // Start MISO read
   end
   assign miso_data = {miso_shift_reg, miso}; // MISO data is the shift register with the last bit from MISO
+
+  // ADC data output
+  // Write MISO data to the data buffer when two words are ready and buffer isn't full
+  assign data_word_wr_en = try_data_write && !data_buf_full;
+  // MISO data stored flag
+  // Alternate storing and writing MISO data
+  always @(posedge clk) begin
+    if (!resetn || state == S_ERROR) miso_stored <= 1'b0; // Reset MISO stored flag on reset or error
+    else if (state != S_TEST_RD && !n_miso_data_ready_mosi_clk) miso_stored <= ~miso_stored; // Toggle MISO stored flag when MISO data is ready to be read
+  end
+  // MISO data storage
+  always @(posedge clk) begin
+    if (!resetn || state == S_ERROR) miso_data_storage <= 16'd0; // Reset MISO data storage on reset or error
+    else if (state != S_TEST_RD && !n_miso_data_ready_mosi_clk) begin
+      if (miso_stored) miso_data_storage <= 16'd0;
+      else miso_data_storage <= miso_data_mosi_clk; // Store MISO data when not stored
+    end
+  end
+  // ADC data write attempt
+  // When two data words are ready (one stored, one just read), try to write them to the data buffer
+  assign try_data_write = !n_miso_data_ready_mosi_clk && miso_stored;
+  assign data_word = {miso_data_mosi_clk[15:0], miso_data_storage}; // [15:0] is the first word, [31:16] is the second word
 
   //// Functions for command clarity
   // SPI command to write to an ADC register

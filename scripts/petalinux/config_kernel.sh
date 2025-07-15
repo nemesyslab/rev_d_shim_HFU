@@ -104,35 +104,9 @@ petalinux-config -c rootfs --silentconfig
 # If OFFLINE, set the project to offline
 if [ "$OFFLINE" = "true" ]; then
   echo "[PTLNX KERNEL CFG] Setting PetaLinux project to offline mode"
-  . ${REV_D_DIR}/scripts/check/petalinux_offline.sh
-
-  cfg_file="project-spec/configs/config"
-
-  # Get the first line with CONFIG_PRE_MIRROR_URL=".*"
-  line_n=$(grep -nG "CONFIG_PRE_MIRROR_URL=\".*\"" $cfg_file | head -1 | cut -d : -f 1)
-  # Replace the line with the local path
-  sed -i.bak -r "${line_n}c\
-  CONFIG_PRE_MIRROR_URL=\"file://${PETALINUX_DOWNLOADS_PATH}\"" $cfg_file
-
-  # Get the first line with CONFIG_YOCTO_LOCAL_SSTATE_FEEDS_URL
-  line_n=$(grep -n "CONFIG_YOCTO_LOCAL_SSTATE_FEEDS_URL" $cfg_file | head -1 | cut -d : -f 1)
-  # Replace the line with the local path
-  sed -i.bak -r "${line_n}c\
-  CONFIG_YOCTO_LOCAL_SSTATE_FEEDS_URL=\"${PETALINUX_SSTATE_PATH}\"" $cfg_file
-
-  # Get the line range for the CONFIG_YOCTO_NETWORK_SSTATE options
-  # (starts at CONFIG_YOCTO_NETWORK_SSTATE_FEEDS, ends at the line before CONFIG_YOCTO_BB_NO_NETWORK)
-  line_start=$(grep -n "CONFIG_YOCTO_NETWORK_SSTATE_FEEDS" $cfg_file | head -1 | cut -d : -f 1)
-  line_end=$(($(grep -n "CONFIG_YOCTO_BB_NO_NETWORK" $cfg_file | head -1 | cut -d : -f 1) -1))
-  # Replace the lines with disabled network sstate feeds
-  sed -i.bak -r "${line_start},${line_end}c\
-  # CONFIG_YOCTO_NETWORK_SSTATE_FEEDS is not set" $cfg_file
-
-  # Get the first line with CONFIG_YOCTO_BB_NO_NETWORK
-  line_n=$(grep -n "CONFIG_YOCTO_BB_NO_NETWORK" $cfg_file | head -1 | cut -d : -f 1)
-  # Replace the line with enabled no-network sstate feeds
-  sed -i.bak -r "${line_n}c\
-  CONFIG_YOCTO_BB_NO_NETWORK=y" $cfg_file
+  cd ${REV_D_DIR}
+  ./scripts/petalinux/make_offline.sh petalinux_template
+  cd tmp/petalinux_template/petalinux
 fi
 
 # If the kernel config file already exists, append all of its lines to the bsp.cfg file
@@ -171,15 +145,14 @@ fi
 # Deduplicate CONFIG_ lines in kernel_config.cfg (keep last occurrence)
 if [ -f "${REV_D_DIR}/${KERNEL_CONFIG}" ]; then
   awk '
-    /^CONFIG_/ {
-      param = $1
-      sub(/=.*/, "", param)
-      last[param] = NR
+    {
+      # Find CONFIG_ parameter anywhere in the line
+      match($0, /CONFIG_[A-Z0-9_]+/)
+      param = (RSTART ? substr($0, RSTART, RLENGTH) : "")
       lines[NR] = $0
       params[NR] = param
-      next
+      if (param != "") last[param] = NR
     }
-    { lines[NR] = $0; params[NR] = "" }
     END {
       for (i=1; i<=NR; i++) {
         if (params[i] == "" || last[params[i]] == i)

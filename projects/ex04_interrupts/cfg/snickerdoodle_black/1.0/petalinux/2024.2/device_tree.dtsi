@@ -16,12 +16,12 @@
   user_irq2: user_irq2 {
     compatible = "generic-uio";
     interrupt-parent = <&intc>;
-    interrupts = <0 31 1>;
+    interrupts = <0 31 4>;
   };
   user_irq3: user_irq3 {
     compatible = "generic-uio";
     interrupt-parent = <&intc>;
-    interrupts = <0 32 1>;
+    interrupts = <0 32 4>;
   };
   user_irq4: user_irq4 {
     compatible = "generic-uio";
@@ -36,11 +36,11 @@
   user_irq6: user_irq6 {
     compatible = "generic-uio";
     interrupt-parent = <&intc>;
-    interrupts = <0 35 1>;
+    interrupts = <0 35 4>;
   };
   user_irq7: user_irq7 {
     compatible = "generic-uio";
     interrupt-parent = <&intc>;
-    interrupts = <0 36 1>;
+    interrupts = <0 36 4>;
   };
 };

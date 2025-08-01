@@ -364,9 +364,8 @@ tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa: tmp/$(BOARD)/$(BOARD_VER)/$(PRO
 # The PetaLinux project
 # Requires the hardware definition file
 # Built using the scripts/petalinux/project.sh script
-tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa projects/$(PROJECT)/cfg/$(BOARD)/$(BOARD_VER)/petalinux/$(PETALINUX_VERSION)/config.patch projects/$(PROJECT)/cfg/$(BOARD)/$(BOARD_VER)/petalinux/$(PETALINUX_VERSION)/rootfs_config.patch scripts/petalinux/project.sh scripts/petalinux/software.sh scripts/petalinux/kernel_modules.sh scripts/petalinux/make_offline.sh
+tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux: tmp/$(BOARD)/$(BOARD_VER)/$(PROJECT)/hw_def.xsa $(shell find projects/$(PROJECT)/cfg/$(BOARD)/$(BOARD_VER)/petalinux/$(PETALINUX_VERSION) -type f) $(shell find projects/$(PROJECT)/rootfs_include -type f) $(shell find projects/$(PROJECT)/software -type f) $(shell find scripts/petalinux -type f)
 	@./scripts/make/status.sh "MAKING CONFIGURED PETALINUX PROJECT: $(BOARD)/$(BOARD_VER)/$(PROJECT)/petalinux"
-	@if [ $(OFFLINE) = "true" ]; then scripts/make/status.sh "PetaLinux OFFLINE build"; fi
 	scripts/petalinux/project.sh $(BOARD) $(BOARD_VER) $(PROJECT) $(OFFLINE)
 	scripts/petalinux/software.sh $(BOARD) $(BOARD_VER) $(PROJECT)
 	scripts/petalinux/kernel_modules.sh $(BOARD) $(BOARD_VER) $(PROJECT)

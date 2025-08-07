@@ -112,8 +112,8 @@ Status codes are 25 bits wide and include:
 
 - `25'h0001`: `STS_OK` - System is operating normally.
 - `25'h0002`: `STS_PS_SHUTDOWN` - Processing system shutdown.
-- `25'h0100`: `STS_SPI_START_TIMEOUT` - SPI start timeout.
-- `25'h0101`: `STS_SPI_RESET_TIMEOUT` - SPI initialization timeout.
+- `25'h0100`: `STS_SPI_RESET_TIMEOUT` - SPI initialization timeout.
+- `25'h0101`: `STS_SPI_START_TIMEOUT` - SPI start timeout.
 - `25'h0200`: `STS_INTEG_THRESH_AVG_OOB` - Integrator threshold average out of bounds.
 - `25'h0201`: `STS_INTEG_WINDOW_OOB` - Integrator window out of bounds.
 - `25'h0202`: `STS_INTEG_EN_OOB` - Integrator enable register out of bounds.

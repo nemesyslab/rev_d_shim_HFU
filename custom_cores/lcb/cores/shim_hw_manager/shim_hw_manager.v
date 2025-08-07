@@ -1,12 +1,12 @@
 `timescale 1 ns / 1 ps
 
 module shim_hw_manager #(
-  // Delays for the various timeouts, default clock frequency is 250 MHz
-  parameter integer SHUTDOWN_FORCE_DELAY = 25000000, // 100 ms, Delay after releasing "n_shutdown_force" before pulsing "n_shutdown_rst"
-  parameter integer SHUTDOWN_RESET_PULSE = 25000,    // 100 us, Pulse width for "n_shutdown_rst"
-  parameter integer SHUTDOWN_RESET_DELAY = 25000000, // 100 ms, Delay after pulsing "n_shutdown_rst" before starting the system
-  parameter integer SPI_RESET_WAIT = 25000000,   // 100 ms, Delay after starting the SPI clock before checking if the SPI subsystem is initialized to off
-  parameter integer SPI_START_WAIT = 250000000  // 1 second, Delay after starting the SPI clock before halting if the SPI subsystem doesn't start
+  // Delays for the various timeouts, default clock frequency is 100 MHz
+  parameter integer SHUTDOWN_FORCE_DELAY = 10000000, // 100 ms : Delay after releasing "n_shutdown_force" before pulsing "n_shutdown_rst"
+  parameter integer SHUTDOWN_RESET_PULSE = 10000,    // 100 us : Pulse width for "n_shutdown_rst"
+  parameter integer SHUTDOWN_RESET_DELAY = 10000000, // 100 ms : Delay after pulsing "n_shutdown_rst" before starting the system
+  parameter integer SPI_RESET_WAIT = 100000000,      //   1  s : Delay after starting the SPI clock before checking if the SPI subsystem is initialized to off
+  parameter integer SPI_START_WAIT = 100000000       //   1  s : Delay after starting the SPI clock before halting if the SPI subsystem doesn't start
 )
 (
   input   wire          clk,     // System clock
@@ -88,8 +88,8 @@ module shim_hw_manager #(
               STS_OK                      = 25'h0001,
               STS_PS_SHUTDOWN             = 25'h0002;
   // SPI subsystem
-  localparam  STS_SPI_START_TIMEOUT       = 25'h0100,
-              STS_SPI_RESET_TIMEOUT       = 25'h0101;
+  localparam  STS_SPI_RESET_TIMEOUT       = 25'h0100,
+              STS_SPI_START_TIMEOUT       = 25'h0101;
   // Pre-start configuration values
   localparam  STS_INTEG_THRESH_AVG_OOB    = 25'h0200,
               STS_INTEG_WINDOW_OOB        = 25'h0201,
@@ -173,9 +173,6 @@ module shim_hw_manager #(
 
         // Confirm the SPI subsystem is reset to its initial state, off
         // If the SPI subsystem is not reset to off, halt the system
-        // Signals to halt:
-        //   timer
-        //   spi_clk_power_n
         S_CONFIRM_SPI_RST: begin
           if (timer >= 10 && spi_off) begin
             state <= S_POWER_ON_CRTL_BRD;

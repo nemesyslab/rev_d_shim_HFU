@@ -8,7 +8,7 @@ module shim_spi_cfg_sync (
 
   // Inputs from axi_shim_cfg (AXI domain)
   input  wire        spi_en,
-  input  wire        block_buffers,
+  input  wire        block_bufs,
   input  wire [14:0] integ_thresh_avg,
   input  wire [31:0] integ_window,
   input  wire        integ_en,
@@ -17,7 +17,7 @@ module shim_spi_cfg_sync (
 
   // Synchronized outputs to SPI domain
   output wire        spi_en_sync,
-  output wire        block_buffers_sync,
+  output wire        block_bufs_sync,
   output wire [14:0] integ_thresh_avg_sync,
   output wire [31:0] integ_window_sync,
   output wire        integ_en_sync,
@@ -46,11 +46,11 @@ module shim_spi_cfg_sync (
   // Block buffers (incoherent)
   sync_incoherent #(
     .WIDTH(1)
-  ) sync_block_buffers (
+  ) sync_block_bufs (
     .clk(spi_clk),
     .resetn(spi_resetn),
-    .din(block_buffers),
-    .dout(block_buffers_sync)
+    .din(block_bufs),
+    .dout(block_bufs_sync)
   );
   
   // Integrator enable (incoherent)

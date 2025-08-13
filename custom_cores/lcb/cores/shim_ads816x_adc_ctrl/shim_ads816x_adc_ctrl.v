@@ -122,10 +122,10 @@ module shim_ads816x_adc_ctrl #(
   // Sample order for ADC
   reg  [ 2:0] sample_order [0:7];
   // ADC control signals
-  wire        start_spi_command;
+  wire        start_spi_cmd;
   reg         adc_rd_done;
   wire        last_adc_word;
-  wire        adc_spi_command_done;
+  wire        adc_spi_cmd_done;
   reg  [ 7:0] n_cs_timer;
   reg         running_n_cs_timer;
   wire        cs_wait_done;
@@ -172,8 +172,8 @@ module shim_ads816x_adc_ctrl #(
     else if (error)                                             state <= S_ERROR; // Check for error states
     else if (state == S_RESET)                                  state <= boot_test_skip ? S_IDLE : S_INIT; // Skip boot test if requested
     else if (state == S_INIT)                                   state <= S_TEST_WR; // Transition to TEST_WR first in initialization
-    else if (state == S_TEST_WR && adc_spi_command_done)        state <= S_REQ_RD; // Transition to REQ_RD after writing test value
-    else if (state == S_REQ_RD && adc_spi_command_done)         state <= S_TEST_RD; // Transition to TEST_RD after requesting read
+    else if (state == S_TEST_WR && adc_spi_cmd_done)            state <= S_REQ_RD; // Transition to REQ_RD after writing test value
+    else if (state == S_REQ_RD && adc_spi_cmd_done)             state <= S_TEST_RD; // Transition to TEST_RD after requesting read
     else if (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk) state <= S_IDLE; // Transition to IDLE after reading test value (mismatch will set error flag)
     else if (cancel_wait)                                       state <= S_IDLE; // Cancel the current wait state if cancel command is received
     else if (cmd_done)                                          state <= next_cmd_state; // Transition to state of next command if command is finished
@@ -270,7 +270,7 @@ module shim_ads816x_adc_ctrl #(
   //// ADC word sequencing
   // ADC word count status (read comes in one cycle after write, so you need 8 + 1 = 9 words)
   assign last_adc_word = (adc_word_idx == 8);
-  assign adc_spi_command_done = ((state == S_ADC_RD)
+  assign adc_spi_cmd_done = ((state == S_ADC_RD)
                                  || (state == S_TEST_WR)
                                  || (state == S_REQ_RD)
                                  || (state == S_TEST_RD))
@@ -278,25 +278,25 @@ module shim_ads816x_adc_ctrl #(
   // ADC done signal
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) adc_rd_done <= 1'b0;
-    else if (state == S_ADC_RD && adc_spi_command_done && last_adc_word) adc_rd_done <= 1'b1;
+    else if (state == S_ADC_RD && adc_spi_cmd_done && last_adc_word) adc_rd_done <= 1'b1;
     else adc_rd_done <= 1'b0;
   end
   // ADC SPI word index
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) adc_word_idx <= 4'd0;
     else if (next_cmd && cmd_word[31:30] == CMD_ADC_RD) adc_word_idx <= 4'd0;
-    else if (state == S_ADC_RD && adc_spi_command_done && !last_adc_word) adc_word_idx <= adc_word_idx + 1;
+    else if (state == S_ADC_RD && adc_spi_cmd_done && !last_adc_word) adc_word_idx <= adc_word_idx + 1;
   end
 
   //// SPI MOSI control
   // Start the next SPI command
-  assign start_spi_command = (next_cmd && cmd_word[31:30] == CMD_ADC_RD)
-                             || (adc_spi_command_done && (state != S_ADC_RD || !last_adc_word))
+  assign start_spi_cmd = (next_cmd && cmd_word[31:30] == CMD_ADC_RD)
+                             || (adc_spi_cmd_done && (state != S_ADC_RD || !last_adc_word))
                              || (state == S_INIT);
   // ~(Chip Select) timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs_timer <= 8'd0;
-    else if (start_spi_command) n_cs_timer <= n_cs_high_time;
+    else if (start_spi_cmd) n_cs_timer <= n_cs_high_time;
     else if (n_cs_timer > 0) n_cs_timer <= n_cs_timer - 1;
     running_n_cs_timer <= (n_cs_timer > 0); // Flag to indicate if CS timer is running
   end
@@ -306,7 +306,7 @@ module shim_ads816x_adc_ctrl #(
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs <= 1'b1; // Reset n_CS on reset or error
     else if (cs_wait_done) n_cs <= 1'b0; // Assert CS when timer is done
-    else if (adc_spi_command_done || state == S_IDLE) n_cs <= 1'b1; // Deassert CS when SPI command is done
+    else if (adc_spi_cmd_done || state == S_IDLE) n_cs <= 1'b1; // Deassert CS when SPI command is done
   end
   // ADC word SPI bit
   always @(posedge clk) begin
@@ -326,12 +326,12 @@ module shim_ads816x_adc_ctrl #(
     else if (state == S_INIT) begin // If just exiting reset:
       // Load the shift register with the command to set On-the-Fly mode
       mosi_shift_reg <= spi_reg_write_cmd(ADDR_OTF_CFG, SET_OTF_CFG_DATA);
-    end else if (state == S_TEST_WR && adc_spi_command_done) begin
+    end else if (state == S_TEST_WR && adc_spi_cmd_done) begin
       mosi_shift_reg <= spi_reg_read_cmd(ADDR_OTF_CFG); // Read back the On-the-Fly mode register
-    end else if (state == S_REQ_RD && adc_spi_command_done) begin
+    end else if (state == S_REQ_RD && adc_spi_cmd_done) begin
       mosi_shift_reg <= 24'd0; // No-op during the word when reading back the On-the-Fly mode register
     end else if ((next_cmd && (next_cmd_state == S_ADC_RD))
-                 || ((state == S_ADC_RD) && adc_spi_command_done)) begin
+                 || ((state == S_ADC_RD) && adc_spi_cmd_done)) begin
       if (adc_word_idx < 8) mosi_shift_reg <= {spi_req_otf_sample_cmd(adc_word_idx[2:0]), 8'd0};
       else if (adc_word_idx == 8) mosi_shift_reg <= {spi_req_otf_sample_cmd(3'b0), 8'd0};
     end

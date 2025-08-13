@@ -19,8 +19,8 @@ module shim_hw_manager #(
   // Pre-start configuration values
   input   wire          lock_viol,                // Configuration lock violation
   input   wire          sys_en_oob,               // System enable register out of bounds
-  input   wire          command_buffer_reset_oob, // Command buffer reset out of bounds
-  input   wire          data_buffer_reset_oob,    // Data buffer reset out of bounds
+  input   wire          cmd_buf_reset_oob,        // Command buffer reset out of bounds
+  input   wire          data_buf_reset_oob,       // Data buffer reset out of bounds
   input   wire          integ_thresh_avg_oob,     // Integrator threshold average out of bounds
   input   wire          integ_window_oob,         // Integrator window out of bounds
   input   wire          integ_en_oob,             // Integrator enable register out of bounds
@@ -61,7 +61,7 @@ module shim_hw_manager #(
   output  reg           spi_clk_gate,      // SPI clock power (negated)
   output  reg           spi_en,            // SPI subsystem enable
   output  reg           shutdown_sense_en, // Shutdown sense enable
-  output  reg           block_buffers,     // Block PL side of command/data buffers
+  output  reg           block_bufs,        // Block PL side of command/data buffers
   output  reg           n_shutdown_force,  // Shutdown force (negated)
   output  reg           n_shutdown_rst,    // Shutdown reset (negated)
   output  wire  [31:0]  status_word,       // Status - Status word
@@ -99,8 +99,8 @@ module shim_hw_manager #(
   // Pre-start configuration values
   localparam  STS_LOCK_VIOL               = 25'h0200,
               STS_SYS_EN_OOB              = 25'h0201,
-              STS_CMD_BUFFER_RESET_OOB    = 25'h0202,
-              STS_DATA_BUFFER_RESET_OOB   = 25'h0203,
+              STS_CMD_BUF_RESET_OOB    = 25'h0202,
+              STS_DATA_BUF_RESET_OOB      = 25'h0203,
               STS_INTEG_THRESH_AVG_OOB    = 25'h0204,
               STS_INTEG_WINDOW_OOB        = 25'h0205,
               STS_INTEG_EN_OOB            = 25'h0206,
@@ -148,7 +148,7 @@ module shim_hw_manager #(
       unlock_cfg <= 1;
       spi_clk_gate <= 0;
       spi_en <= 0;
-      block_buffers <= 1;
+      block_bufs <= 1;
       status_code <= STS_OK;
       board_num <= 0;
       ps_interrupt <= 0;
@@ -165,12 +165,12 @@ module shim_hw_manager #(
             if (sys_en_oob) begin // System enable out of bounds
               state <= S_HALTING;
               status_code <= STS_SYS_EN_OOB;
-            end else if (command_buffer_reset_oob) begin // Command buffer reset out of bounds
+            end else if (cmd_buf_reset_oob) begin // Command buffer reset out of bounds
               state <= S_HALTING;
-              status_code <= STS_CMD_BUFFER_RESET_OOB;
-            end else if (data_buffer_reset_oob) begin // Data buffer reset out of bounds
+              status_code <= STS_CMD_BUF_RESET_OOB;
+            end else if (data_buf_reset_oob) begin // Data buffer reset out of bounds
               state <= S_HALTING;
-              status_code <= STS_DATA_BUFFER_RESET_OOB;
+              status_code <= STS_DATA_BUF_RESET_OOB;
             end else if (integ_thresh_avg_oob) begin // Integrator threshold average out of bounds
               state <= S_HALTING;
               status_code <= STS_INTEG_THRESH_AVG_OOB;
@@ -269,7 +269,7 @@ module shim_hw_manager #(
             state <= S_RUNNING;
             timer <= 0;
             shutdown_sense_en <= 1;
-            block_buffers <= 0;
+            block_bufs <= 0;
             ps_interrupt <= 1;
           end else begin
             timer <= timer + 1;
@@ -417,7 +417,7 @@ module shim_hw_manager #(
           unlock_cfg <= 1;
           spi_clk_gate <= 0;
           spi_en <= 0;
-          block_buffers <= 1;
+          block_bufs <= 1;
           ps_interrupt <= 1;
         end // S_HALTING
 
@@ -445,7 +445,7 @@ module shim_hw_manager #(
           unlock_cfg <= 1;
           spi_clk_gate <= 0;
           spi_en <= 0;
-          block_buffers <= 1;
+          block_bufs <= 1;
           status_code <= STS_EMPTY;
           board_num <= 0;
           ps_interrupt <= 1;

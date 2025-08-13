@@ -116,11 +116,11 @@ module shim_ad5676_dac_ctrl #(
   reg  signed [15:0] cal_val [0:7]; // Calibration values for each channel
   // DAC MOSI control signals
   reg         read_next_dac_val_pair;
-  wire        start_spi_command;
+  wire        start_spi_cmd;
   reg         dac_wr_done;
   wire        last_dac_channel;
   wire        second_dac_channel_of_pair;
-  wire        dac_spi_command_done;
+  wire        dac_spi_cmd_done;
   reg  [ 4:0] n_cs_timer;
   reg         running_n_cs_timer; // Flag to indicate if CS timer is running
   wire        cs_wait_done;
@@ -172,8 +172,8 @@ module shim_ad5676_dac_ctrl #(
     else if (error)                                             state <= S_ERROR; // Check for error states
     else if (state == S_RESET)                                  state <= boot_test_skip ? S_IDLE : S_INIT; // Skip boot test if requested
     else if (state == S_INIT)                                   state <= S_TEST_WR; // Transition to TEST_WR first in initialization
-    else if (state == S_TEST_WR && dac_spi_command_done)        state <= S_REQ_RD; // Transition to REQ_RD after writing test value
-    else if (state == S_REQ_RD && dac_spi_command_done)         state <= S_TEST_RD; // Transition to TEST_RD after requesting read
+    else if (state == S_TEST_WR && dac_spi_cmd_done)            state <= S_REQ_RD; // Transition to REQ_RD after writing test value
+    else if (state == S_REQ_RD && dac_spi_cmd_done)             state <= S_TEST_RD; // Transition to TEST_RD after requesting read
     else if (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk) state <= S_IDLE; // Transition to IDLE after reading test value (mismatch will set error flag)
     else if (cancel_wait)                                       state <= S_IDLE; // Cancel the current wait state if cancel command is received
     else if (cmd_done)                                          state <= next_cmd_state; // Transition to state of next command if command is finished
@@ -320,7 +320,7 @@ module shim_ad5676_dac_ctrl #(
   // DAC channel count status
   assign last_dac_channel = (dac_channel == 3'd7); // Last channel is when all bits are set
   assign second_dac_channel_of_pair = (dac_channel[0] == 1'b1); // Even channel is when the least significant bit is set (off by 1)
-  assign dac_spi_command_done = ((state == S_DAC_WR)
+  assign dac_spi_cmd_done = ((state == S_DAC_WR)
                                  || (state == S_TEST_WR)
                                  || (state == S_REQ_RD)
                                  || (state == S_TEST_RD))
@@ -333,7 +333,7 @@ module shim_ad5676_dac_ctrl #(
     // If done writing to DAC and finished the second channel of the update pair, 
     //   but it's not the last pair, read the next word (pair of channels)
     else if (state == S_DAC_WR
-             && dac_spi_command_done
+             && dac_spi_cmd_done
              && second_dac_channel_of_pair 
              && !last_dac_channel) read_next_dac_val_pair <= 1'b1;
     else read_next_dac_val_pair <= 1'b0;
@@ -341,14 +341,14 @@ module shim_ad5676_dac_ctrl #(
   // DAC write done
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) dac_wr_done <= 1'b0;
-    else if (state == S_DAC_WR && dac_spi_command_done && last_dac_channel) dac_wr_done <= 1'b1; // Ready when all channels are written
+    else if (state == S_DAC_WR && dac_spi_cmd_done && last_dac_channel) dac_wr_done <= 1'b1; // Ready when all channels are written
     else dac_wr_done <= 1'b0; // Not ready otherwise
   end
   // DAC channel index
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) dac_channel <= 3'd0;
     else if (next_cmd && cmd_word[31:30] == CMD_DAC_WR) dac_channel <= 3'd0;
-    else if (state == S_DAC_WR && dac_spi_command_done) dac_channel <= dac_channel + 1; // Increment channel when timer is done
+    else if (state == S_DAC_WR && dac_spi_cmd_done) dac_channel <= dac_channel + 1; // Increment channel when timer is done
   end
   // DAC value loading
   always @(posedge clk) begin
@@ -396,13 +396,13 @@ module shim_ad5676_dac_ctrl #(
 
   //// SPI MOSI control
   // Start the next SPI command
-  assign start_spi_command = (next_cmd && cmd_word[31:30] == CMD_DAC_WR) 
-                             || (dac_spi_command_done && (state != S_DAC_WR || !last_dac_channel))
+  assign start_spi_cmd = (next_cmd && cmd_word[31:30] == CMD_DAC_WR) 
+                             || (dac_spi_cmd_done && (state != S_DAC_WR || !last_dac_channel))
                              || (state == S_INIT);
   // ~(Chip Select) timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs_timer <= 5'd0;
-    else if (start_spi_command) n_cs_timer <= n_cs_high_time;
+    else if (start_spi_cmd) n_cs_timer <= n_cs_high_time;
     else if (n_cs_timer > 0) n_cs_timer <= n_cs_timer - 1;
     running_n_cs_timer <= (n_cs_timer > 0); // Flag to indicate if CS timer is running
   end
@@ -412,7 +412,7 @@ module shim_ad5676_dac_ctrl #(
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs <= 1'b1; // Reset n_CS on reset or error
     else if (cs_wait_done) n_cs <= 1'b0; // Assert CS when timer is done
-    else if (dac_spi_command_done || state == S_IDLE) n_cs <= 1'b1; // Deassert CS when SPI command is done
+    else if (dac_spi_cmd_done || state == S_IDLE) n_cs <= 1'b1; // Deassert CS when SPI command is done
   end
   // DAC word SPI bit
   always @(posedge clk) begin
@@ -429,7 +429,7 @@ module shim_ad5676_dac_ctrl #(
     else if (state == S_INIT) begin // If just exiting reset:
       // Load the shift register with the test value for boot-up sequence
       mosi_shift_reg <= {spi_write_cmd(DAC_TEST_CH, DAC_TEST_VAL), 24'b0}; // Load test value for test channel
-    end else if (state == S_TEST_WR && dac_spi_command_done) begin // If finished with the test write:
+    end else if (state == S_TEST_WR && dac_spi_cmd_done) begin // If finished with the test write:
       // Load the shift register with the read request and a write to reset the test value
       mosi_shift_reg <= {spi_read_cmd(DAC_TEST_CH), spi_write_cmd(3'b101, {1'b1, 15'b0})}; // Read test channel and write midrange to reset test value
     end else if (state == S_DAC_WR && dac_load_stage == DAC_LOAD_STAGE_CONV) begin
@@ -491,7 +491,7 @@ module shim_ad5676_dac_ctrl #(
 
   // DAC data output
   // If in S_TEST_RD state and MISO data is ready, output the readback data if in debug mode
-  assign try_data_write = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && boot_test_debug) // In debug mode, output readback data
+  assign try_data_write = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && boot_test_debug); // In debug mode, output readback data
   // DAC data output write enable
   // Write MISO data to the data buffer when attempting a write and buffer isn't full
   always @(posedge clk) begin

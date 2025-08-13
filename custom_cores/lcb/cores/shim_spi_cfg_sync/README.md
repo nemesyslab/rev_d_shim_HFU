@@ -18,7 +18,7 @@ The `shim_spi_cfg_sync` module synchronizes configuration signals from the AXI c
   - `integ_window [31:0]`: Integration window configuration.
   - `integ_en`: Integration enable signal.
   - `spi_en`: SPI enable signal.
-  - `block_buffers`: Block buffers enable signal.
+  - `block_bufs`: Block buffers enable signal.
 
 ### Outputs
 
@@ -27,7 +27,7 @@ The `shim_spi_cfg_sync` module synchronizes configuration signals from the AXI c
   - `integ_window_sync [31:0]`: Synchronized integration window.
   - `integ_en_sync`: Synchronized integration enable.
   - `spi_en_sync`: Synchronized SPI enable.
-  - `block_buffers_sync`: Synchronized block buffers enable.
+  - `block_bufs_sync`: Synchronized block buffers enable.
 
 ## Operation
 
@@ -37,7 +37,7 @@ The `shim_spi_cfg_sync` module synchronizes configuration signals from the AXI c
   - `integ_window_sync`: 0x00010000
   - `integ_en_sync`: 0
   - `spi_en_sync`: 0
-  - `block_buffers_sync`: 1
+  - `block_bufs_sync`: 1
 
 ## Notes
 

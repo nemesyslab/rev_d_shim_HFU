@@ -7,7 +7,7 @@ module shim_ad5676_dac_ctrl #(
   input  wire        resetn,
 
   input  wire        boot_test_skip, // Skip the boot test sequence
-  input  wire        boot_test_debug, // Debug mode for boot test
+  input  wire        debug, // Debug mode flag
 
   output reg         setup_done,
 
@@ -47,17 +47,22 @@ module shim_ad5676_dac_ctrl #(
   // SPI clock frequency (Hz)
   localparam integer SPI_CLK_HZ = 20_000_000;
 
-  // Conversion time (ns) for AD5676 (from datasheet)
-  localparam integer T_CONV_NS_AD5676 = 830;
-
-  // Calculate cycles for t_conv
-  localparam integer n_conv_cycles = (T_CONV_NS_AD5676 * SPI_CLK_HZ + 999_999_999) / 1_000_000_000;
-
+  // Update time (ns) for AD5676 (time between rising edges of n_cs from datasheet)
+  localparam integer T_UPDATE_NS_AD5676 = 830;
+  
   // 24 bits per SPI command
   localparam integer SPI_CMD_BITS = 24;
 
-  // n_cs must be high for the maximum of (n_conv_cycles, SPI_CMD_BITS)
-  localparam integer n_cs_high_time_calc = (n_conv_cycles > SPI_CMD_BITS) ? n_conv_cycles : SPI_CMD_BITS;
+  // Calculate total cycles needed for t_update
+  localparam integer t_update_cycles = (T_UPDATE_NS_AD5676 * SPI_CLK_HZ + 999_999_999) / 1_000_000_000;
+
+  // n_cs_high_time_calc must be at least 4, and such that n_cs_high_time_calc + SPI_CMD_BITS >= t_update_cycles
+  // Also, it must not exceed 31 (5 bits)
+  localparam integer n_cs_high_time_calc = 
+    (t_update_cycles < SPI_CMD_BITS) ? 4 :
+    (t_update_cycles - SPI_CMD_BITS < 4) ? 4 :
+    (t_update_cycles - SPI_CMD_BITS > 31) ? 31 :
+    (t_update_cycles - SPI_CMD_BITS);
 
   // Set n_cs_high_time as a wire for use in logic
   wire [4:0] n_cs_high_time = n_cs_high_time_calc[4:0];
@@ -82,7 +87,6 @@ module shim_ad5676_dac_ctrl #(
   localparam S_DAC_WR     = 4'd8; // DAC write state
   localparam S_ERROR      = 4'd9; // Error state, invalid command or unexpected condition
 
-
   // Command types
   localparam CMD_NO_OP   = 2'b00;
   localparam CMD_DAC_WR  = 2'b01;
@@ -99,8 +103,15 @@ module shim_ad5676_dac_ctrl #(
   localparam DAC_LOAD_STAGE_CAL  = 2'b01; // Second stage, adding calibration and getting absolute values
   localparam DAC_LOAD_STAGE_CONV = 2'b10; // Final conversion stage, converting back to offset representation
 
+  // Debug codes
+  localparam DBG_MISO_DATA = 4'd1; // Debug code for MISO data
+  localparam DBG_STATE_TRANSITION = 4'd2; // Debug code for state transition
+  localparam DBG_N_CS_TIMER = 4'd3; // Debug code for n_cs timer
+  localparam DBG_SPI_BIT = 4'd4; // Debug code for SPI bit counter
+
   // State and command processing
   reg  [ 3:0] state;
+  reg  [ 3:0] prev_state;
   wire        cmd_done;
   wire        next_cmd;
   wire [ 2:0] next_cmd_state;
@@ -126,6 +137,7 @@ module shim_ad5676_dac_ctrl #(
   wire        cs_wait_done;
   reg  [ 2:0] dac_channel;
   reg  [ 4:0] spi_bit;
+  reg         running_spi_bit; // Flag to indicate if SPI bit counter is running
   reg  signed [15:0] first_dac_val_signed;
   reg  signed [16:0] first_dac_val_cal_signed;
   reg  signed [15:0] second_dac_val_signed;
@@ -143,6 +155,11 @@ module shim_ad5676_dac_ctrl #(
   wire        n_miso_data_ready_mosi_clk; // Indicate whether the MISO data is ready to be read in MOSI clock domain
   wire [15:0] miso_data_mosi_clk; // MISO data in MOSI clock domain
   wire        boot_readback_match; // Indicate whether the readback matches the expected value
+  // Data buffer write signals
+  wire        debug_miso_data; // Debug write signal for MISO data
+  wire        debug_state_transition; // Debug signal for state transitions
+  wire        debug_n_cs_timer; // Debug signal for n_cs timer
+  wire        debug_spi_bit; // Debug signal for SPI bit counter
   wire        try_data_write; // Try to write data to the output buffer
 
 
@@ -167,6 +184,7 @@ module shim_ad5676_dac_ctrl #(
   // Waiting for trigger flag
   assign waiting_for_trig = (state == S_TRIG_WAIT);
   // State transition
+  // Next state
   always @(posedge clk) begin
     if (!resetn)                                                state <= S_RESET; // Reset to initial state
     else if (error)                                             state <= S_ERROR; // Check for error states
@@ -178,6 +196,10 @@ module shim_ad5676_dac_ctrl #(
     else if (cancel_wait)                                       state <= S_IDLE; // Cancel the current wait state if cancel command is received
     else if (cmd_done)                                          state <= next_cmd_state; // Transition to state of next command if command is finished
     else if (state == S_DAC_WR && dac_wr_done)                  state <= wait_for_trig ? S_TRIG_WAIT : S_DELAY; // If the DAC write is done, go to the proper wait state
+  end
+  // Previous state
+  always @(posedge clk) begin
+    prev_state <= state; // Store the previous state for debugging
   end
   // Setup done
   always @(posedge clk) begin
@@ -321,10 +343,10 @@ module shim_ad5676_dac_ctrl #(
   assign last_dac_channel = (dac_channel == 3'd7); // Last channel is when all bits are set
   assign second_dac_channel_of_pair = (dac_channel[0] == 1'b1); // Even channel is when the least significant bit is set (off by 1)
   assign dac_spi_cmd_done = ((state == S_DAC_WR)
-                                 || (state == S_TEST_WR)
-                                 || (state == S_REQ_RD)
-                                 || (state == S_TEST_RD))
-                                && !n_cs && !running_n_cs_timer && spi_bit == 0; // SPI command is done when CS is deasserted and SPI bit counter is zero
+                             || (state == S_TEST_WR)
+                             || (state == S_REQ_RD)
+                             || (state == S_TEST_RD))
+                            && !n_cs && !running_n_cs_timer && spi_bit == 0; // SPI command is done when CS is deasserted and SPI bit counter is zero
   // Read next DAC word from command buffer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) read_next_dac_val_pair <= 1'b0;
@@ -397,8 +419,10 @@ module shim_ad5676_dac_ctrl #(
   //// SPI MOSI control
   // Start the next SPI command
   assign start_spi_cmd = (next_cmd && cmd_word[31:30] == CMD_DAC_WR) 
-                             || (dac_spi_cmd_done && (state != S_DAC_WR || !last_dac_channel))
-                             || (state == S_INIT);
+                          || (state == S_INIT)
+                          || (state == S_TEST_WR && dac_spi_cmd_done)
+                          || (state == S_REQ_RD && dac_spi_cmd_done)
+                          || (state == S_DAC_WR && dac_spi_cmd_done && !last_dac_channel);
   // ~(Chip Select) timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs_timer <= 5'd0;
@@ -416,32 +440,34 @@ module shim_ad5676_dac_ctrl #(
   end
   // DAC word SPI bit
   always @(posedge clk) begin
-    if (!resetn || state != S_DAC_WR) spi_bit <= 5'd0;
+    if (!resetn || state == S_ERROR) spi_bit <= 5'd0;
     else if (spi_bit > 0) spi_bit <= spi_bit - 1; // Decrement SPI bit counter
     else if (cs_wait_done) spi_bit <= 5'd23; // Load SPI bit counter with 24 bits when CS is done waiting
+    running_spi_bit <= (spi_bit > 0); // Flag to indicate if SPI bit counter is running
   end
   // SPI MOSI bit
   assign mosi = mosi_shift_reg[47]; // MOSI is the most significant bit of the shift register
   // SPI MOSI shift register
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) mosi_shift_reg <= 48'd0; // Reset shift register on reset or error
-    else if (spi_bit > 0) mosi_shift_reg <= {mosi_shift_reg[46:0], 1'b0}; // Shift bits out
+    else if (spi_bit > 0 || running_spi_bit) mosi_shift_reg <= {mosi_shift_reg[46:0], 1'b0}; // Shift bits out
     else if (state == S_INIT) begin // If just exiting reset:
       // Load the shift register with the test value for boot-up sequence
-      mosi_shift_reg <= {spi_write_cmd(DAC_TEST_CH, DAC_TEST_VAL), 24'b0}; // Load test value for test channel
+      mosi_shift_reg <= {spi_write_cmd(DAC_TEST_CH, DAC_TEST_VAL), 24'h000000}; // Load test value for test channel
     end else if (state == S_TEST_WR && dac_spi_cmd_done) begin // If finished with the test write:
       // Load the shift register with the read request and a write to reset the test value
-      mosi_shift_reg <= {spi_read_cmd(DAC_TEST_CH), spi_write_cmd(3'b101, {1'b1, 15'b0})}; // Read test channel and write midrange to reset test value
+      mosi_shift_reg <= {spi_read_cmd(DAC_TEST_CH), spi_write_cmd(DAC_TEST_CH, 16'h7FFF)}; // Read test channel and write midrange to reset test value
     end else if (state == S_DAC_WR && dac_load_stage == DAC_LOAD_STAGE_CONV) begin
       // Load the shift register with the first DAC value and the second DAC value
       mosi_shift_reg <= {spi_write_cmd(dac_channel, signed_to_offset(first_dac_val_cal_signed)), 
                         spi_write_cmd(dac_channel + 1, signed_to_offset(second_dac_val_cal_signed))};
     end
   end
-  // Start MISO read in MOSI clock domain (should show up 1 cycle later on readback MISO clock than equivalent MOSI clock cycle)
+  // Start MISO read in MOSI clock domain
+  // (should show up 1 cycle later on readback MISO clock than equivalent MOSI clock cycle, plus 2 for the synchronizer)
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) start_miso_mosi_clk <= 1'b0; // Reset start MISO read signal on reset or error
-    else if (state == S_TEST_RD && spi_bit == 5'd16) start_miso_mosi_clk <= 1'b1;
+    else if (state == S_TEST_RD && spi_bit == 5'd18) start_miso_mosi_clk <= 1'b1;
     else start_miso_mosi_clk <= 1'b0;
   end
 
@@ -489,20 +515,41 @@ module shim_ad5676_dac_ctrl #(
     else miso_buf_wr_en <= 1'b0;
   end
 
-  // DAC data output
-  // If in S_TEST_RD state and MISO data is ready, output the readback data if in debug mode
-  assign try_data_write = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && boot_test_debug); // In debug mode, output readback data
+  //// DAC data output
+  // DEBUG: MISO data ready in MOSI clock domain
+  assign debug_miso_data = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && debug);
+  // DEBUG: State transition
+  assign debug_state_transition = (state != prev_state && debug);
+  // DEBUG: n_cs_timer start value
+  assign debug_n_cs_timer = (!running_n_cs_timer && n_cs_timer > 0 && debug);
+  // DEBUG: SPI bit counter when it changes from 0 to nonzero
+  assign debug_spi_bit = (!running_spi_bit && spi_bit > 0 && debug); 
+  // Attempt to write data to the data buffer if any of the following are true
+  assign try_data_write = debug_miso_data
+                          || debug_state_transition
+                          || debug_n_cs_timer
+                          || debug_spi_bit;
   // DAC data output write enable
   // Write MISO data to the data buffer when attempting a write and buffer isn't full
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR) data_word_wr_en <= 1'b0; // Reset data word write enable on reset or error
+    if (!resetn) data_word_wr_en <= 1'b0; // Reset data word write enable on reset
     else if (try_data_write && !data_buf_full) data_word_wr_en <= 1'b1; // Write data word when two words are ready and buffer isn't full
     else data_word_wr_en <= 1'b0;
   end
   // MISO data word
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR) data_word <= 32'd0; // Reset data word on reset or error
-    else if (try_data_write && !data_buf_full) data_word <= {16'd0, miso_data_mosi_clk};
+    if (!resetn) data_word <= 32'd0; // Reset data word on reset or error
+    else if (try_data_write && !data_buf_full) begin
+      if (debug_miso_data) begin
+        data_word <= {DBG_MISO_DATA, 12'd0, miso_data_mosi_clk[15:0]}; // Write MISO data with debug code
+      end else if (debug_state_transition) begin
+        data_word <= {DBG_STATE_TRANSITION, 20'd0, prev_state[3:0], state[3:0]}; // Write state transition with debug code
+      end else if (debug_n_cs_timer) begin
+        data_word <= {DBG_N_CS_TIMER, 23'd0, n_cs_timer}; // Write n_cs timer value with debug code
+      end else if (debug_spi_bit) begin
+        data_word <= {DBG_SPI_BIT, 23'd0, spi_bit}; // Write SPI bit counter value with debug code
+      end
+    end else data_word <= 32'd0;
   end
 
   //// Functions for conversions

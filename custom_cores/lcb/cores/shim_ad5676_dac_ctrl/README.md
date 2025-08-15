@@ -9,7 +9,7 @@ The `shim_ad5676_dac_ctrl` module manages the AD5676 DAC in the Rev D shim firmw
 
 - `clk`, `resetn`: Main clock and active-low reset.
 - `boot_test_skip`: Skips boot-time DAC test and sets up the core immediately.
-- `boot_test_debug`: Enables debug output during boot test.
+- `debug`: Enables debug mode (debug outputs to the data buffer).
 - `cmd_word [31:0]`: Command word from buffer.
 - `cmd_buf_empty`: Indicates if command buffer is empty.
 - `trigger`: External trigger signal.

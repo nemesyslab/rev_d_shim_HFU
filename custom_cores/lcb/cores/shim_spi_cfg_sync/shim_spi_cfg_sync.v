@@ -13,7 +13,7 @@ module shim_spi_cfg_sync (
   input  wire [31:0] integ_window,
   input  wire        integ_en,
   input  wire [15:0] boot_test_skip,
-  input  wire [15:0] boot_test_debug,
+  input  wire [15:0] debug,
 
   // Synchronized outputs to SPI domain
   output wire        spi_en_sync,
@@ -22,7 +22,7 @@ module shim_spi_cfg_sync (
   output wire [31:0] integ_window_sync,
   output wire        integ_en_sync,
   output wire [15:0] boot_test_skip_sync,
-  output wire [15:0] boot_test_debug_sync
+  output wire [15:0] debug_sync
 );
 
   // Default values for registers
@@ -99,14 +99,14 @@ module shim_spi_cfg_sync (
     .dout(boot_test_skip_sync)
   );
 
-  // Boot test debug (incoherent)
+  // Debug (incoherent)
   sync_incoherent #(
     .WIDTH(16)
-  ) sync_boot_test_debug (
+  ) sync_debug (
     .clk(spi_clk),
     .resetn(spi_resetn),
-    .din(boot_test_debug),
-    .dout(boot_test_debug_sync)
+    .din(debug),
+    .dout(debug_sync)
   );
   
 endmodule

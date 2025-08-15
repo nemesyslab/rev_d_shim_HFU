@@ -17,15 +17,15 @@ module shim_hw_manager #(
   input   wire          spi_off,      // SPI system powered off
   input   wire          ext_shutdown, // External shutdown
   // Pre-start configuration values
-  input   wire          lock_viol,                // Configuration lock violation
-  input   wire          sys_en_oob,               // System enable register out of bounds
-  input   wire          cmd_buf_reset_oob,        // Command buffer reset out of bounds
-  input   wire          data_buf_reset_oob,       // Data buffer reset out of bounds
-  input   wire          integ_thresh_avg_oob,     // Integrator threshold average out of bounds
-  input   wire          integ_window_oob,         // Integrator window out of bounds
-  input   wire          integ_en_oob,             // Integrator enable register out of bounds
-  input   wire          boot_test_skip_oob,       // Boot test skip out of bounds
-  input   wire          boot_test_debug_oob,      // Boot test debug out of bounds
+  input   wire          lock_viol,            // Configuration lock violation
+  input   wire          sys_en_oob,           // System enable register out of bounds
+  input   wire          cmd_buf_reset_oob,    // Command buffer reset out of bounds
+  input   wire          data_buf_reset_oob,   // Data buffer reset out of bounds
+  input   wire          integ_thresh_avg_oob, // Integrator threshold average out of bounds
+  input   wire          integ_window_oob,     // Integrator window out of bounds
+  input   wire          integ_en_oob,         // Integrator enable register out of bounds
+  input   wire          boot_test_skip_oob,   // Boot test skip out of bounds
+  input   wire          debug_oob,           // Debug reg out of bounds
   // Shutdown sense (per board)
   input   wire  [ 7:0]  shutdown_sense, // Shutdown sense
   // Integrator (per board)
@@ -105,7 +105,7 @@ module shim_hw_manager #(
               STS_INTEG_WINDOW_OOB        = 25'h0205,
               STS_INTEG_EN_OOB            = 25'h0206,
               STS_BOOT_TEST_SKIP_OOB      = 25'h0207,
-              STS_BOOT_TEST_DEBUG_OOB     = 25'h0208;
+              STS_DEBUG_OOB     = 25'h0208;
   // Shutdown sense
   localparam  STS_SHUTDOWN_SENSE          = 25'h0300,
               STS_EXT_SHUTDOWN            = 25'h0301;
@@ -183,9 +183,9 @@ module shim_hw_manager #(
             end else if (boot_test_skip_oob) begin // Boot test skip out of bounds
               state <= S_HALTING;
               status_code <= STS_BOOT_TEST_SKIP_OOB;
-            end else if (boot_test_debug_oob) begin // Boot test debug out of bounds
+            end else if (debug_oob) begin // Debug reg out of bounds
               state <= S_HALTING;
-              status_code <= STS_BOOT_TEST_DEBUG_OOB;
+              status_code <= STS_DEBUG_OOB;
             end else begin // Lock the cfg registers and start the SPI clock to confirm the SPI subsystem is initialized
               state <= S_CONFIRM_SPI_RST;
               timer <= 0;

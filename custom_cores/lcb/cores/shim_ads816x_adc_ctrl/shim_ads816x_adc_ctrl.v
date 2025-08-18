@@ -289,7 +289,7 @@ module shim_ads816x_adc_ctrl #(
   end
 
   //// ADC word sequencing
-  // ADC word count status (read comes in one cycle after write, so you need 8 + 1 = 9 words)
+  // ADC word count status (read comes in one word after writing the read request, so you need 8 + 1 = 9 words for 8 reads)
   assign last_adc_word = (adc_word_idx == 8);
   assign adc_spi_cmd_done = ((state == S_ADC_RD)
                              || (state == S_TEST_WR)

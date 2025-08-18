@@ -69,7 +69,8 @@ module shim_ad5676_dac_ctrl #(
   ///////////////////////////////////////////////////////////////////////////////
 
   localparam DAC_TEST_CH = 3'd5; // DAC channel for testing (5 is nice for a clear binary value)
-  localparam DAC_TEST_VAL = 16'b1000000000001010; // Test value for DAC channel (near midrange is good)
+  localparam DAC_TEST_VAL = 16'h800A; // Test value for DAC channel (near midrange is good)
+  localparam DAC_MIDRANGE = 16'h7FFF;
 
   // DAC SPI command
   localparam SPI_CMD_REG_WRITE = 4'b0001; // DAC SPI command for register write to be later loaded with LDAC
@@ -458,7 +459,7 @@ module shim_ad5676_dac_ctrl #(
       mosi_shift_reg <= {spi_write_cmd(DAC_TEST_CH, DAC_TEST_VAL), 24'h000000};
     // If finished with the test write, load the shift register with two commands: the read request and a write to reset the test value
     end else if (state == S_TEST_WR && dac_spi_cmd_done) begin
-      mosi_shift_reg <= {spi_read_cmd(DAC_TEST_CH), spi_write_cmd(DAC_TEST_CH, 16'h7FFF)};
+      mosi_shift_reg <= {spi_read_cmd(DAC_TEST_CH), spi_write_cmd(DAC_TEST_CH, DAC_MIDRANGE)};
     // Load the shift register with the first DAC value and the second DAC value
     end else if (state == S_DAC_WR && dac_load_stage == DAC_LOAD_STAGE_CONV) begin
       mosi_shift_reg <= {spi_write_cmd(dac_channel, signed_to_offset(first_dac_val_cal_signed)), 

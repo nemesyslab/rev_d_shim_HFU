@@ -7,7 +7,9 @@ module shim_axi_sys_ctrl #
   parameter integer INTEG_WINDOW_DEFAULT = 5000000, // 100 ms at 50MHz
   parameter integer INTEG_EN_DEFAULT = 1,
   parameter integer BOOT_TEST_SKIP_DEFAULT = 0, // Default to not skipping boot test for all 16 cores
-  parameter integer DEBUG = 0 // Default to no debug
+  parameter integer DEBUG = 0, // Default to no debug
+  parameter integer MOSI_SCK_POL_DEFAULT = 0, // Default to 0 MOSI SCK polarity
+  parameter integer MISO_SCK_POL_DEFAULT = 0 // Default to 0 MISO SCK polarity
 )
 (
   // System signals
@@ -25,6 +27,8 @@ module shim_axi_sys_ctrl #
   output reg                 integ_en,
   output reg  [15:0]         boot_test_skip,
   output reg  [15:0]         debug,
+  output reg                 mosi_sck_pol,
+  output reg                 miso_sck_pol,
 
   // Configuration bounds
   output wire  sys_en_oob,
@@ -35,6 +39,8 @@ module shim_axi_sys_ctrl #
   output wire  integ_en_oob,
   output wire  boot_test_skip_oob,
   output wire  debug_oob,
+  output wire  mosi_sck_pol_oob,
+  output wire  miso_sck_pol_oob,
   output reg   lock_viol,
 
   // AXI4-Line subordinate port
@@ -70,6 +76,8 @@ module shim_axi_sys_ctrl #
   localparam integer INTEG_EN_32_OFFSET                = 5;
   localparam integer BOOT_TEST_SKIP_32_OFFSET          = 6;
   localparam integer DEBUG_32_OFFSET                   = 7;
+  localparam integer MOSI_SCK_POL_32_OFFSET            = 8;
+  localparam integer MISO_SCK_POL_32_OFFSET            = 9;
 
   // Localparams for widths
   localparam integer SYS_EN_WIDTH = 1;
@@ -80,6 +88,8 @@ module shim_axi_sys_ctrl #
   localparam integer INTEG_EN_WIDTH = 1;
   localparam integer BOOT_TEST_SKIP_WIDTH = 16;
   localparam integer DEBUG_WIDTH = 16;
+  localparam integer MOSI_SCK_POL_WIDTH = 1;
+  localparam integer MISO_SCK_POL_WIDTH = 1;
 
   // Localparams for MIN/MAX values
   localparam integer SYS_EN_MAX                  = {{SYS_EN_WIDTH{1'b1}}};
@@ -92,6 +102,8 @@ module shim_axi_sys_ctrl #
   localparam integer INTEG_EN_MAX                = {{INTEG_EN_WIDTH{1'b1}}};
   localparam integer BOOT_TEST_SKIP_MAX          = {{BOOT_TEST_SKIP_WIDTH{1'b1}}};
   localparam integer DEBUG_MAX                   = {{DEBUG_WIDTH{1'b1}}};
+  localparam integer MOSI_SCK_POL_MAX            = {{MOSI_SCK_POL_WIDTH{1'b1}}};
+  localparam integer MISO_SCK_POL_MAX            = {{MISO_SCK_POL_WIDTH{1'b1}}};
 
   // Local capped default values
   localparam integer INTEG_THRESHOLD_AVERAGE_DEFAULT_CAPPED = 
@@ -111,6 +123,12 @@ module shim_axi_sys_ctrl #
   localparam integer DEBUG_DEFAULT_CAPPED =
     (DEBUG > DEBUG_MAX) ? DEBUG_MAX :
     DEBUG;
+  localparam integer MOSI_SCK_POL_DEFAULT_CAPPED =
+    (MOSI_SCK_POL_DEFAULT > MOSI_SCK_POL_MAX) ? MOSI_SCK_POL_MAX :
+    MOSI_SCK_POL_DEFAULT;
+  localparam integer MISO_SCK_POL_DEFAULT_CAPPED =
+    (MISO_SCK_POL_DEFAULT > MISO_SCK_POL_MAX) ? MISO_SCK_POL_MAX :
+    MISO_SCK_POL_DEFAULT;
 
   // Local parameters for AXI configuration
   localparam integer CFG_DATA_WIDTH = 1024;
@@ -182,6 +200,8 @@ module shim_axi_sys_ctrl #
   assign int_initial_data_wire[INTEG_EN_32_OFFSET*32+INTEG_EN_WIDTH-1:INTEG_EN_32_OFFSET*32] = INTEG_EN_DEFAULT_CAPPED[INTEG_EN_WIDTH-1:0];
   assign int_initial_data_wire[BOOT_TEST_SKIP_32_OFFSET*32+BOOT_TEST_SKIP_WIDTH-1-:BOOT_TEST_SKIP_WIDTH] = BOOT_TEST_SKIP_DEFAULT_CAPPED[BOOT_TEST_SKIP_WIDTH-1:0];
   assign int_initial_data_wire[DEBUG_32_OFFSET*32+DEBUG_WIDTH-1-:DEBUG_WIDTH] = DEBUG_DEFAULT_CAPPED[DEBUG_WIDTH-1:0];
+  assign int_initial_data_wire[MOSI_SCK_POL_32_OFFSET*32+MOSI_SCK_POL_WIDTH-1:MOSI_SCK_POL_32_OFFSET*32] = MOSI_SCK_POL_DEFAULT_CAPPED[MOSI_SCK_POL_WIDTH-1:0];
+  assign int_initial_data_wire[MISO_SCK_POL_32_OFFSET*32+MISO_SCK_POL_WIDTH-1:MISO_SCK_POL_32_OFFSET*32] = MISO_SCK_POL_DEFAULT_CAPPED[MISO_SCK_POL_WIDTH-1:0];
 
   // Out of bounds checks. Use the whole word for the check to error on truncation
   assign sys_en_oob = $unsigned(int_data_wire[SYS_EN_32_OFFSET*32+SYS_EN_WIDTH-1:SYS_EN_32_OFFSET*32]) > SYS_EN_MAX;
@@ -195,6 +215,8 @@ module shim_axi_sys_ctrl #
   assign integ_en_oob = $unsigned(int_data_wire[INTEG_EN_32_OFFSET*32+31:INTEG_EN_32_OFFSET*32]) > INTEG_EN_MAX;
   assign boot_test_skip_oob = $unsigned(int_data_wire[BOOT_TEST_SKIP_32_OFFSET*32+BOOT_TEST_SKIP_WIDTH-1:BOOT_TEST_SKIP_32_OFFSET*32]) > BOOT_TEST_SKIP_MAX;
   assign debug_oob = $unsigned(int_data_wire[DEBUG_32_OFFSET*32+DEBUG_WIDTH-1:DEBUG_32_OFFSET*32]) > DEBUG_MAX;
+  assign mosi_sck_pol_oob = $unsigned(int_data_wire[MOSI_SCK_POL_32_OFFSET*32+MOSI_SCK_POL_WIDTH-1:MOSI_SCK_POL_32_OFFSET*32]) > MOSI_SCK_POL_MAX;
+  assign miso_sck_pol_oob = $unsigned(int_data_wire[MISO_SCK_POL_32_OFFSET*32+MISO_SCK_POL_WIDTH-1:MISO_SCK_POL_32_OFFSET*32]) > MISO_SCK_POL_MAX;
 
   // Address and value bound compliance sent to write response
   // Send SLVERR if there are any violations
@@ -207,6 +229,8 @@ module shim_axi_sys_ctrl #
     (s_axi_awaddr[ADDR_LSB+CFG_WIDTH-1:ADDR_LSB] == INTEG_EN_32_OFFSET) ? ((locked || integ_en_oob) ? 2'b10 : 2'b00) :
     (s_axi_awaddr[ADDR_LSB+CFG_WIDTH-1:ADDR_LSB] == BOOT_TEST_SKIP_32_OFFSET) ? ((locked || boot_test_skip_oob) ? 2'b10 : 2'b00) :
     (s_axi_awaddr[ADDR_LSB+CFG_WIDTH-1:ADDR_LSB] == DEBUG_32_OFFSET) ? ((locked || debug_oob) ? 2'b10 : 2'b00) :
+    (s_axi_awaddr[ADDR_LSB+CFG_WIDTH-1:ADDR_LSB] == MOSI_SCK_POL_32_OFFSET) ? ((locked || mosi_sck_pol_oob) ? 2'b10 : 2'b00) :
+    (s_axi_awaddr[ADDR_LSB+CFG_WIDTH-1:ADDR_LSB] == MISO_SCK_POL_32_OFFSET) ? ((locked || miso_sck_pol_oob) ? 2'b10 : 2'b00) :
     2'b10;
   
   assign sys_en = int_data_wire[SYS_EN_32_OFFSET*32];
@@ -218,7 +242,9 @@ module shim_axi_sys_ctrl #
             || integ_window != int_data_wire[INTEG_WINDOW_32_OFFSET*32+INTEG_WINDOW_WIDTH-1:INTEG_WINDOW_32_OFFSET*32]
             || integ_en != int_data_wire[INTEG_EN_32_OFFSET*32]
             || boot_test_skip != int_data_wire[BOOT_TEST_SKIP_32_OFFSET*32+BOOT_TEST_SKIP_WIDTH-1:BOOT_TEST_SKIP_32_OFFSET*32]
-            || debug != int_data_wire[DEBUG_32_OFFSET*32+DEBUG_WIDTH-1:DEBUG_32_OFFSET*32];
+            || debug != int_data_wire[DEBUG_32_OFFSET*32+DEBUG_WIDTH-1:DEBUG_32_OFFSET*32]
+            || mosi_sck_pol != int_data_wire[MOSI_SCK_POL_32_OFFSET*32]
+            || miso_sck_pol != int_data_wire[MISO_SCK_POL_32_OFFSET*32];
 
   // Configuration register sanitization logic
   always @(posedge aclk)
@@ -236,6 +262,8 @@ module shim_axi_sys_ctrl #
       integ_en <= INTEG_EN_DEFAULT_CAPPED;
       boot_test_skip <= BOOT_TEST_SKIP_DEFAULT_CAPPED;
       debug <= DEBUG_DEFAULT_CAPPED;
+      mosi_sck_pol <= MOSI_SCK_POL_DEFAULT_CAPPED;
+      miso_sck_pol <= MISO_SCK_POL_DEFAULT_CAPPED;
 
       locked <= 1'b0;
       lock_viol <= 1'b0;
@@ -258,6 +286,8 @@ module shim_axi_sys_ctrl #
         integ_en <= int_data_wire[INTEG_EN_32_OFFSET*32+INTEG_EN_WIDTH-1:INTEG_EN_32_OFFSET*32];
         boot_test_skip <= int_data_wire[BOOT_TEST_SKIP_32_OFFSET*32+BOOT_TEST_SKIP_WIDTH-1:BOOT_TEST_SKIP_32_OFFSET*32];
         debug <= int_data_wire[DEBUG_32_OFFSET*32+DEBUG_WIDTH-1:DEBUG_32_OFFSET*32];
+        mosi_sck_pol <= int_data_wire[MOSI_SCK_POL_32_OFFSET*32];
+        miso_sck_pol <= int_data_wire[MISO_SCK_POL_32_OFFSET*32];
       end else if (unlock) begin
         locked <= 1'b0;
         lock_viol <= 1'b0;

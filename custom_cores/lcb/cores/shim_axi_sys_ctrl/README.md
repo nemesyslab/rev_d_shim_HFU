@@ -14,6 +14,8 @@ The `shim_axi_sys_ctrl` module provides a configurable interface for managing sy
 | 0x14           | 5             | `integ_en`             | 1 bit   | Integration enable                            | 1                     | 0 or 1                       |
 | 0x18           | 6             | `boot_test_skip`       | 16 bits | Boot test skip mask (per-core)                | 0                     | 0 to 0xFFFF                  |
 | 0x1C           | 7             | `debug`               | 16 bits | Debug mask (per-core)               | 0                     | 0 to 0xFFFF                  |
+| 0x20           | 8             | `mosi_sck_pol`        | 1 bit   | MOSI SCK polarity                            | 0                     | 0 or 1                       |
+| 0x24           | 9             | `miso_sck_pol`        | 1 bit   | MISO SCK polarity                            | 0                     | 0 or 1                       |
 
 - **Inputs**:
   - `aclk`: AXI clock signal.
@@ -30,7 +32,9 @@ The `shim_axi_sys_ctrl` module provides a configurable interface for managing sy
   - `integ_en`: Integration enable signal.
   - `boot_test_skip`: 16-bit boot test skip mask.
   - `debug`: 16-bit debug mask.
-  - Out-of-bounds signals: `sys_en_oob`, `cmd_buf_reset_oob`, `data_buf_reset_oob`, `integ_thresh_avg_oob`, `integ_window_oob`, `integ_en_oob`, `boot_test_skip_oob`, `debug_oob`.
+  - `mosi_sck_pol`: MOSI SCK polarity signal.
+  - `miso_sck_pol`: MISO SCK polarity signal.
+  - Out-of-bounds signals: `sys_en_oob`, `cmd_buf_reset_oob`, `data_buf_reset_oob`, `integ_thresh_avg_oob`, `integ_window_oob`, `integ_en_oob`, `boot_test_skip_oob`, `debug_oob`, `mosi_sck_pol_oob`, `miso_sck_pol_oob`.
   - `lock_viol`: Signal indicating a lock violation.
   - AXI4-Lite signals: `s_axi_awready`, `s_axi_wready`, `s_axi_bresp`, `s_axi_bvalid`, `s_axi_arready`, `s_axi_rdata`, `s_axi_rresp`, `s_axi_rvalid`.
 
@@ -42,6 +46,7 @@ The `shim_axi_sys_ctrl` module provides a configurable interface for managing sy
 - The `cmd_buf_reset` and `data_buf_reset` signals are not locked by the `sys_en` signal. While reset is active, they are set to all ones, but default to all zeros otherwise.
 - The `boot_test_skip` register allows skipping boot tests for selected cores, with each bit corresponding to a core.
 - The `debug` register enables debug mode for selected cores, with each bit corresponding to a core.
+- The `mosi_sck_pol` and `miso_sck_pol` registers control the SPI clock polarity for MOSI and MISO signals respectively.
 - The `unlock` signal can be used to clear the lock and allow modifications to the configuration registers if `sys_en` has been set low.
 - The module supports AXI4-Lite read and write operations for accessing and modifying configuration values. Write responses include error codes to indicate out-of-bounds violations or lock violations.
 

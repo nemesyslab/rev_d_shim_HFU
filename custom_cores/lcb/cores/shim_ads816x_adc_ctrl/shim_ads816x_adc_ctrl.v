@@ -134,7 +134,7 @@ module shim_ads816x_adc_ctrl #(
   // Command flow control
   wire       cmd_done;
   wire       next_cmd;
-  wire [2:0] next_cmd_state;
+  wire [3:0] next_cmd_state;
   wire       cancel_wait;
   wire       error;
   // Command word toggled bits

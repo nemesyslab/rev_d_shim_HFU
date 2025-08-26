@@ -298,7 +298,7 @@ module shim_ad5676_dac_ctrl #(
   assign error = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && ~boot_readback_match) // Readback mismatch (boot fail)
                  || (state != S_TRIG_WAIT && trigger && trigger_counter == 0) // Unexpected trigger
                  || (state == S_DAC_WR && !dac_wr_done && !wait_for_trig && delay_timer == 0) // Delay too short
-                 || (state == S_DAC_WR && ldac_shared) // LDAC misalignment
+                 || (state == S_DAC_WR && ldac_shared && !ldac) // LDAC misalignment
                  || (next_cmd && next_cmd_state == S_ERROR) // Bad command
                  || (((cmd_done && expect_next) || read_next_dac_val_pair) && cmd_buf_empty) // Command buffer underflow
                  || (try_data_write && data_buf_full) // Data buffer overflow
@@ -318,7 +318,7 @@ module shim_ad5676_dac_ctrl #(
   // LDAC misalignment
   always @(posedge clk) begin
     if (!resetn) ldac_misalign <= 1'b0;
-    else if (state == S_DAC_WR && ldac_shared && !dac_wr_done) ldac_misalign <= 1'b1; // LDAC misalignment if LDAC is shared and another controller is writing to DAC
+    else if (state == S_DAC_WR && ldac_shared && !ldac) ldac_misalign <= 1'b1; // LDAC misalignment if LDAC is shared and another controller is writing to DAC
   end
   // Delay too short
   always @(posedge clk) begin

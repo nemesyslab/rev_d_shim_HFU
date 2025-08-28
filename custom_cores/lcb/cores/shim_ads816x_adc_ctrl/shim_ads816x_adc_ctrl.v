@@ -108,14 +108,15 @@ module shim_ads816x_adc_ctrl #(
   localparam S_ERROR     = 4'd9;
 
   // Command types
-  localparam CMD_NO_OP   = 2'b00;
-  localparam CMD_ADC_RD  = 2'b01;
-  localparam CMD_SET_ORD = 2'b10;
-  localparam CMD_CANCEL  = 2'b11;
+  localparam CMD_NO_OP   = 3'b000;
+  localparam CMD_LOOP    = 3'b001;
+  localparam CMD_ADC_RD  = 3'b010;
+  localparam CMD_SET_ORD = 3'b100;
+  localparam CMD_CANCEL  = 3'b111;
 
   // Command bits
-  localparam TRIG_BIT = 29;
-  localparam CONT_BIT = 28;
+  localparam TRIG_BIT = 28;
+  localparam CONT_BIT = 27;
 
   // Debug codes
   localparam DBG_MISO_DATA       = 4'd1;
@@ -132,6 +133,7 @@ module shim_ads816x_adc_ctrl #(
   // FSM state and previous state
   reg  [3:0] state, prev_state;
   // Command flow control
+  wire [2:0] command;
   wire       cmd_done;
   wire       next_cmd;
   wire [3:0] next_cmd_state;
@@ -193,11 +195,32 @@ module shim_ads816x_adc_ctrl #(
   // Logic
   ///////////////////////////////////////////////////////////////////////////////
 
+  //// ---- Command word
+  assign command = cmd_buf_empty ? 3'b000 : cmd_word[31:29];
+  // Command bits processing
+  always @(posedge clk) begin
+    if (!resetn || state == S_ERROR) begin
+      wait_for_trig <= 1'b0;
+      expect_next <= 1'b0;
+    end else if (next_cmd) begin
+      if ((command == CMD_NO_OP) || (command == CMD_ADC_RD)) begin
+        wait_for_trig <= cmd_word[TRIG_BIT];
+        expect_next <= cmd_word[CONT_BIT];
+      end else begin
+        wait_for_trig <= 1'b0; // No wait for trigger for SET_ORD or CANCEL commands
+        expect_next <= 1'b0; // No expectation for next command for SET_ORD or CANCEL commands
+      end
+    end
+  end
+  // Command word read enable
+  assign cmd_word_rd_en = (state != S_ERROR) && !cmd_buf_empty && (cmd_done || cancel_wait);
+
+
   //// ---- State machine transitions
   // Allows a cancel command to cancel a delay or trigger wait
   assign cancel_wait = (state == S_DELAY || state == S_TRIG_WAIT || (state == S_ADC_RD && adc_rd_done))
                         && !cmd_buf_empty
-                        && cmd_word[31:30] == CMD_CANCEL;
+                        && command == CMD_CANCEL;
   // Current command is finished
   assign cmd_done = (state == S_IDLE && !cmd_buf_empty)
                     || (state == S_DELAY && delay_timer == 0)
@@ -206,10 +229,10 @@ module shim_ads816x_adc_ctrl #(
   assign next_cmd = cmd_done && !cmd_buf_empty;
   // Next state from upcoming command
   assign next_cmd_state = cmd_buf_empty ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
-                           : (cmd_word[31:30] == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
-                           : (cmd_word[31:30] == CMD_ADC_RD) ? S_ADC_RD // If command is ADC read, go to ADC read state
-                           : (cmd_word[31:30] == CMD_SET_ORD) ? S_IDLE // If command is SET_ORD, go to IDLE
-                           : (cmd_word[31:30] == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
+                           : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
+                           : (command == CMD_ADC_RD) ? S_ADC_RD // If command is ADC read, go to ADC read state
+                           : (command == CMD_SET_ORD) ? S_IDLE // If command is SET_ORD, go to IDLE
+                           : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
                            : S_ERROR; // If command is unrecognized, go to ERROR state
   // Signal indicating the core is waiting for a trigger
   assign waiting_for_trig = (state == S_TRIG_WAIT);
@@ -238,32 +261,12 @@ module shim_ads816x_adc_ctrl #(
   end
 
 
-  //// ---- Command bits processing
-  always @(posedge clk) begin
-    if (!resetn || state == S_ERROR) begin
-      wait_for_trig <= 1'b0;
-      expect_next <= 1'b0;
-    end else if (next_cmd) begin
-      if ((cmd_word[31:30] == CMD_NO_OP) || (cmd_word[31:30] == CMD_ADC_RD)) begin
-        wait_for_trig <= cmd_word[TRIG_BIT];
-        expect_next <= cmd_word[CONT_BIT];
-      end else begin
-        wait_for_trig <= 1'b0; // No wait for trigger for SET_ORD or CANCEL commands
-        expect_next <= 1'b0; // No expectation for next command for SET_ORD or CANCEL commands
-      end
-    end
-  end
-  // Command word read enable
-  assign cmd_word_rd_en = (state != S_ERROR) && !cmd_buf_empty
-                          && (cmd_done || cancel_wait);
-
-
   //// ---- Delay timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR || cancel_wait) delay_timer <= 26'd0;
     // If the next command is an ADC read or no-op with a delay wait, load the delay timer from command word
     else if (next_cmd
-             && ((cmd_word[31:30] == CMD_ADC_RD) || (cmd_word[31:30] == CMD_NO_OP))
+             && ((command == CMD_ADC_RD) || (command == CMD_NO_OP))
              && !cmd_word[TRIG_BIT]) delay_timer <= cmd_word[25:0];
     // Otherwise decrement delay timer to zero if nonzero
     else if (delay_timer > 0) delay_timer <= delay_timer - 1;
@@ -275,7 +278,7 @@ module shim_ads816x_adc_ctrl #(
     if (!resetn || state == S_ERROR || cancel_wait) trigger_counter <= 26'd0;
     // If the next command is an ADC read or no-op with a trigger wait, load the trigger counter from command word
     else if (next_cmd
-             && ((cmd_word[31:30] == CMD_ADC_RD) || (cmd_word[31:30] == CMD_NO_OP))
+             && ((command == CMD_ADC_RD) || (command == CMD_NO_OP))
              && cmd_word[TRIG_BIT]) trigger_counter <= cmd_word[25:0];
     // Otherwise decrement trigger counter on trigger to zero if nonzero
     else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
@@ -329,7 +332,7 @@ module shim_ads816x_adc_ctrl #(
     if (!resetn) begin
       for (i = 0; i < 8; i = i + 1)
         sample_order[i] <= i[2:0];
-    end else if (next_cmd && cmd_word[31:30] == CMD_SET_ORD) begin
+    end else if (next_cmd && command == CMD_SET_ORD) begin
       sample_order[0] <= cmd_word[2:0];
       sample_order[1] <= cmd_word[5:3];
       sample_order[2] <= cmd_word[8:6];
@@ -359,14 +362,14 @@ module shim_ads816x_adc_ctrl #(
   // ADC SPI word index
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) adc_word_idx <= 4'd0;
-    else if (next_cmd && cmd_word[31:30] == CMD_ADC_RD) adc_word_idx <= 4'd0;
+    else if (next_cmd && command == CMD_ADC_RD) adc_word_idx <= 4'd0;
     else if (state == S_ADC_RD && adc_spi_cmd_done && !last_adc_word) adc_word_idx <= adc_word_idx + 1;
   end
 
 
   //// ---- SPI MOSI control
   // Start the next SPI command
-  assign start_spi_cmd = (next_cmd && cmd_word[31:30] == CMD_ADC_RD)
+  assign start_spi_cmd = (next_cmd && command == CMD_ADC_RD)
                           || (state == S_INIT)
                           || (state == S_TEST_WR && adc_spi_cmd_done)
                           || (state == S_REQ_RD && adc_spi_cmd_done)

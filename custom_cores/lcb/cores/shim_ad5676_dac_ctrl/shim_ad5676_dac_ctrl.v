@@ -110,9 +110,9 @@ module shim_ad5676_dac_ctrl #(
   localparam CMD_CANCEL  = 2'b11;
 
   // Command bit positions
-  localparam TRIG_BIT = 29;
-  localparam CONT_BIT = 28;
-  localparam LDAC_BIT = 27;
+  localparam LDAC_BIT = 29;
+  localparam TRIG_BIT = 28;
+  localparam CONT_BIT = 27;
 
   // DAC loading stages
   localparam DAC_LOAD_STAGE_INIT = 2'b00;
@@ -134,6 +134,7 @@ module shim_ad5676_dac_ctrl #(
   // FSM state and previous state
   reg  [3:0] state, prev_state;
   // Command flow control
+  wire [2:0] command;
   wire       cmd_done;
   wire       next_cmd;
   wire [3:0] next_cmd_state;
@@ -199,11 +200,36 @@ module shim_ad5676_dac_ctrl #(
   // Logic
   ///////////////////////////////////////////////////////////////////////////////
 
-  //// State machine transitions
+  //// ---- Command word
+  assign command = cmd_buf_empty ? 2'b00 : cmd_word[31:30];
+  // Command bits processing
+  // do_ldac, wait_for_trig, expect_next
+  always @(posedge clk) begin
+    if (!resetn || state == S_ERROR) begin
+      do_ldac <= 1'b0;
+      wait_for_trig <= 1'b0;
+      expect_next <= 1'b0;
+    end else if (next_cmd) begin
+      if ((command == CMD_NO_OP ) || (command == CMD_DAC_WR)) begin
+        do_ldac <= cmd_word[LDAC_BIT]; // Set do_ldac based on command word
+        wait_for_trig <= cmd_word[TRIG_BIT]; // Set wait_for_trig based on command word
+        expect_next <= cmd_word[CONT_BIT]; // Set expect_next based on command word
+      end else begin
+        do_ldac <= 1'b0; // Reset do_ldac if not a NO_OP or DAC_WR command
+        wait_for_trig <= 1'b0; // Reset wait_for_trig if not a NO_OP or DAC_WR command
+        expect_next <= 1'b0; // Reset expect_next if not a NO_OP or DAC_WR command
+      end
+    end
+  end
+  // Command word read enable
+  assign cmd_word_rd_en = (state != S_ERROR) && !cmd_buf_empty && (read_next_dac_val_pair || cmd_done || cancel_wait);
+
+
+  //// ---- State machine transitions
   // Allows a cancel command to cancel a delay or trigger wait
   assign cancel_wait =  (state == S_DELAY || state == S_TRIG_WAIT || (state == S_DAC_WR && dac_wr_done))
                         && !cmd_buf_empty 
-                        && cmd_word[31:30] == CMD_CANCEL;
+                        && command == CMD_CANCEL;
   // Current command is finished
   assign cmd_done = (state == S_IDLE && !cmd_buf_empty) 
                     || (state == S_DELAY && delay_timer == 0)
@@ -212,10 +238,10 @@ module shim_ad5676_dac_ctrl #(
   assign next_cmd = cmd_done && !cmd_buf_empty;
   // Next state from upcoming command
   assign next_cmd_state =  cmd_buf_empty ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
-                           : (cmd_word[31:30] == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
-                           : (cmd_word[31:30] == CMD_DAC_WR) ? S_DAC_WR // If command is DAC write, go to DAC_WR state
-                           : (cmd_word[31:30] == CMD_SET_CAL) ? S_IDLE // If command is SET_CAL, go to IDLE
-                           : (cmd_word[31:30] == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE 
+                           : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
+                           : (command == CMD_DAC_WR) ? S_DAC_WR // If command is DAC write, go to DAC_WR state
+                           : (command == CMD_SET_CAL) ? S_IDLE // If command is SET_CAL, go to IDLE
+                           : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE 
                            : S_ERROR; // If command is not recognized, go to ERROR state
   // Waiting for trigger flag
   assign waiting_for_trig = (state == S_TRIG_WAIT);
@@ -245,36 +271,12 @@ module shim_ad5676_dac_ctrl #(
   end
 
 
-  //// Command bits processing
-  // do_ldac, wait_for_trig, expect_next
-  always @(posedge clk) begin
-    if (!resetn || state == S_ERROR) begin
-      do_ldac <= 1'b0;
-      wait_for_trig <= 1'b0;
-      expect_next <= 1'b0;
-    end else if (next_cmd) begin
-      if ((cmd_word[31:30] == CMD_NO_OP ) || (cmd_word[31:30] == CMD_DAC_WR)) begin
-        do_ldac <= cmd_word[LDAC_BIT]; // Set do_ldac based on command word
-        wait_for_trig <= cmd_word[TRIG_BIT]; // Set wait_for_trig based on command word
-        expect_next <= cmd_word[CONT_BIT]; // Set expect_next based on command word
-      end else begin
-        do_ldac <= 1'b0; // Reset do_ldac if not a NO_OP or DAC_WR command
-        wait_for_trig <= 1'b0; // Reset wait_for_trig if not a NO_OP or DAC_WR command
-        expect_next <= 1'b0; // Reset expect_next if not a NO_OP or DAC_WR command
-      end
-    end
-  end
-  // Command word read enable
-  assign cmd_word_rd_en = (state != S_ERROR) && !cmd_buf_empty 
-                          && (read_next_dac_val_pair || cmd_done || cancel_wait);
-
-
-  //// Delay timer
+  //// ---- Delay timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR || cancel_wait) delay_timer <= 26'd0;
     // If the next command is a DAC write or no-op with a delay wait, load the delay timer from command word
     else if (next_cmd 
-             && ((cmd_word[31:30] == CMD_DAC_WR) || (cmd_word[31:30] == CMD_NO_OP)) 
+             && ((command == CMD_DAC_WR) || (command == CMD_NO_OP)) 
              && !cmd_word[TRIG_BIT]) delay_timer <= cmd_word[25:0];
     // Otherwise decrement delay timer to zero if nonzero
     else if (delay_timer > 0) delay_timer <= delay_timer - 1;
@@ -285,7 +287,7 @@ module shim_ad5676_dac_ctrl #(
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR || cancel_wait) trigger_counter <= 26'd0;
     // If the next command is a DAC write or no-op with a trigger wait, load the trigger counter from command word
-    else if (next_cmd && ((cmd_word[31:30] == CMD_DAC_WR) || (cmd_word[31:30] == CMD_NO_OP)) && cmd_word[TRIG_BIT]) begin
+    else if (next_cmd && ((command == CMD_DAC_WR) || (command == CMD_NO_OP)) && cmd_word[TRIG_BIT]) begin
       trigger_counter <= cmd_word[25:0];
     end
     // Otherwise decrement trigger counter to zero if nonzero
@@ -388,7 +390,7 @@ module shim_ad5676_dac_ctrl #(
       cal_val[6] <= 16'd0;
       cal_val[7] <= 16'd0;
       cal_oob <= 1'b0;
-    end else if (next_cmd && cmd_word[31:30] == CMD_SET_CAL) begin
+    end else if (next_cmd && command == CMD_SET_CAL) begin
       if ($signed(cmd_word[15:0]) <= $signed(ABS_CAL_MAX) && $signed(cmd_word[15:0]) >= -$signed(ABS_CAL_MAX)) begin
         cal_val[cmd_word[18:16]] <= cmd_word[15:0]; // Set calibration value for the channel if within bounds
       end else begin
@@ -410,7 +412,7 @@ module shim_ad5676_dac_ctrl #(
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) read_next_dac_val_pair <= 1'b0;
     // If next command is DAC write, immediately read next DAC word (two channels)
-    else if (next_cmd && cmd_word[31:30] == CMD_DAC_WR) read_next_dac_val_pair <= 1'b1;
+    else if (next_cmd && command == CMD_DAC_WR) read_next_dac_val_pair <= 1'b1;
     // If done writing to DAC and finished the second channel of the update pair, 
     //   but it's not the last pair, read the next word (pair of channels)
     else if (state == S_DAC_WR
@@ -428,7 +430,7 @@ module shim_ad5676_dac_ctrl #(
   // DAC channel index
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) dac_channel <= 3'd0;
-    else if (next_cmd && cmd_word[31:30] == CMD_DAC_WR) dac_channel <= 3'd0;
+    else if (next_cmd && command == CMD_DAC_WR) dac_channel <= 3'd0;
     else if (state == S_DAC_WR && dac_spi_cmd_done) dac_channel <= dac_channel + 1; // Increment channel when timer is done
   end
   // DAC value loading
@@ -477,7 +479,7 @@ module shim_ad5676_dac_ctrl #(
 
   //// ---- SPI MOSI control
   // Start the next SPI command
-  assign start_spi_cmd = (next_cmd && cmd_word[31:30] == CMD_DAC_WR) 
+  assign start_spi_cmd = (next_cmd && command == CMD_DAC_WR) 
                           || (state == S_INIT)
                           || (state == S_TEST_WR && dac_spi_cmd_done)
                           || (state == S_REQ_RD && dac_spi_cmd_done)

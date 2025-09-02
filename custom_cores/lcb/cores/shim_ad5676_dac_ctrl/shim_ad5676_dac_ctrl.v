@@ -78,18 +78,20 @@ module shim_ad5676_dac_ctrl #(
   localparam S_DELAY     = 4'd6;
   localparam S_TRIG_WAIT = 4'd7;
   localparam S_DAC_WR    = 4'd8;
-  localparam S_ERROR     = 4'd9;
+  localparam S_DAC_WR_CH = 4'd9;
+  localparam S_ERROR     = 4'd15;
 
   // Command types
-  localparam CMD_NO_OP   = 2'b00;
-  localparam CMD_DAC_WR  = 2'b01;
-  localparam CMD_SET_CAL = 2'b10;
-  localparam CMD_CANCEL  = 2'b11;
+  localparam CMD_NO_OP   = 3'd0;
+  localparam CMD_SET_CAL = 3'd1;
+  localparam CMD_DAC_WR  = 3'd2;
+  localparam CMD_WR_CH   = 3'd3;
+  localparam CMD_CANCEL  = 3'd7;
 
   // Command bit positions
-  localparam LDAC_BIT = 29;
   localparam TRIG_BIT = 28;
   localparam CONT_BIT = 27;
+  localparam LDAC_BIT = 26;
 
   // DAC loading stages
   localparam DAC_LOAD_STAGE_INIT = 2'b00;
@@ -122,13 +124,16 @@ module shim_ad5676_dac_ctrl #(
   // Command word toggled bits
   reg         do_ldac;
   reg         wait_for_trig;
+  wire        trig_wait_done;
+  wire        delay_wait_done;
   reg         expect_next;
   // Delay timer and trigger counter
-  reg  [25:0] delay_timer, trigger_counter;
+  reg  [24:0] delay_timer, trigger_counter;
   // Calibration values
   reg  signed [15:0] cal_val [0:7];
 
   //// ---- Calibrated DAC value calculation
+  reg         load_pair;
   reg  [1:0]  dac_load_stage;
   reg  signed [15:0] first_dac_val_signed;
   reg  signed [16:0] first_dac_val_cal_signed;
@@ -185,39 +190,44 @@ module shim_ad5676_dac_ctrl #(
   assign cmd_word = cmd_buf_empty ? 32'd0 : cmd_buf_word;
   assign command = cmd_word[31:30];
   assign next_cmd_ready = !cmd_buf_empty;
+  // Command word read enable
+  assign cmd_buf_rd_en = (state != S_ERROR) && next_cmd_ready && (read_next_dac_val_pair || cmd_done || cancel_wait);
   // Command bits processing
-  // do_ldac, wait_for_trig, expect_next
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) begin
       do_ldac <= 1'b0;
       wait_for_trig <= 1'b0;
       expect_next <= 1'b0;
     end else if (next_cmd) begin
+      // Set LDAC, wait_for_trig, and expect_next flags from command bits if NO_OP or DAC_WR command
       if ((command == CMD_NO_OP ) || (command == CMD_DAC_WR)) begin
-        do_ldac <= cmd_word[LDAC_BIT]; // Set do_ldac based on command word
-        wait_for_trig <= cmd_word[TRIG_BIT]; // Set wait_for_trig based on command word
-        expect_next <= cmd_word[CONT_BIT]; // Set expect_next based on command word
+        do_ldac <= cmd_word[LDAC_BIT];
+        wait_for_trig <= cmd_word[TRIG_BIT];
+        expect_next <= cmd_word[CONT_BIT];
+      // Otherwise set flags to 0
       end else begin
-        do_ldac <= 1'b0; // Reset do_ldac if not a NO_OP or DAC_WR command
-        wait_for_trig <= 1'b0; // Reset wait_for_trig if not a NO_OP or DAC_WR command
-        expect_next <= 1'b0; // Reset expect_next if not a NO_OP or DAC_WR command
+        do_ldac <= 1'b0;
+        wait_for_trig <= 1'b0;
+        expect_next <= 1'b0;
       end
     end
   end
-  // Command word read enable
-  assign cmd_buf_rd_en = (state != S_ERROR) && next_cmd_ready && (read_next_dac_val_pair || cmd_done || cancel_wait);
 
 
   //// ---- State machine transitions
-  // Allows a cancel command to cancel a delay or trigger wait
+  // Allow a cancel command to cancel a delay or trigger wait
   assign cancel_wait =  (state == S_DELAY || state == S_TRIG_WAIT || (state == S_DAC_WR && dac_wr_done))
                         && next_cmd_ready 
                         && command == CMD_CANCEL;
+  // Trigger wait is done when trigger counter occurs at 1, or finish immediately if trigger counter was 0
+  assign trig_wait_done = (trigger && trigger_counter == 1) || trigger_counter == 0;
+  // Delay wait is done when delay timer reaches 0
+  assign delay_wait_done = (delay_timer == 0);
   // Current command is finished
   assign cmd_done = (state == S_IDLE && next_cmd_ready) 
-                    || (state == S_DELAY && delay_timer == 0)
-                    || (state == S_TRIG_WAIT && trigger && trigger_counter == 0)
-                    || (state == S_DAC_WR && dac_wr_done && !wait_for_trig && delay_timer == 0);
+                    || (state == S_DELAY && delay_wait_done)
+                    || (state == S_TRIG_WAIT && trig_wait_done)
+                    || (state == S_DAC_WR && dac_wr_done && (wait_for_trig ? trig_wait_done : delay_wait_done));
   assign next_cmd = cmd_done && next_cmd_ready;
   // Next state from upcoming command
   assign next_cmd_state =  !next_cmd_ready ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
@@ -239,7 +249,7 @@ module shim_ad5676_dac_ctrl #(
     else if (state == S_REQ_RD && dac_spi_cmd_done)             state <= S_TEST_RD; // Transition to TEST_RD after requesting read
     else if (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk) state <= S_IDLE; // Transition to IDLE after reading test value (mismatch will set error flag)
     else if (cancel_wait)                                       state <= S_IDLE; // Cancel the current wait state if cancel command is received
-    else if (cmd_done)                                          state <= next_cmd_state; // Transition to state of next command if command is finished
+    else if (cmd_done)                                          state <= next_cmd_state; // Transition to state of next command if command is finished (allows skipping wait state if no wait is needed)
     else if (state == S_DAC_WR && dac_wr_done)                  state <= wait_for_trig ? S_TRIG_WAIT : S_DELAY; // If the DAC write is done, go to the proper wait state
   end
   // Previous state
@@ -253,42 +263,38 @@ module shim_ad5676_dac_ctrl #(
     else if ((state == S_TEST_RD) && ~n_miso_data_ready_mosi_clk && boot_readback_match) setup_done <= 1'b1;
   end
 
-  // Latch n_cs_high_time when coming out of reset
-  always @(posedge clk) begin
-    if (!resetn) n_cs_high_time_latched <= 5'd0;
-    else if (state == S_RESET) n_cs_high_time_latched <= n_cs_high_time;
-  end
-
 
   //// ---- Delay timer
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR || cancel_wait) delay_timer <= 26'd0;
+    if (!resetn || state == S_ERROR || cancel_wait) delay_timer <= 25'd0;
     // If the next command is a DAC write or no-op with a delay wait, load the delay timer from command word
     else if (next_cmd 
              && ((command == CMD_DAC_WR) || (command == CMD_NO_OP)) 
-             && !cmd_word[TRIG_BIT]) delay_timer <= cmd_word[25:0];
+             && !cmd_word[TRIG_BIT]) begin
+      delay_timer <= cmd_word[24:0];
     // Otherwise decrement delay timer to zero if nonzero
-    else if (delay_timer > 0) delay_timer <= delay_timer - 1;
+    end else if (delay_timer > 0) delay_timer <= delay_timer - 1;
   end
 
 
   //// ---- Trigger counter
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR || cancel_wait) trigger_counter <= 26'd0;
+    if (!resetn || state == S_ERROR || cancel_wait) trigger_counter <= 25'd0;
     // If the next command is a DAC write or no-op with a trigger wait, load the trigger counter from command word
-    else if (next_cmd && ((command == CMD_DAC_WR) || (command == CMD_NO_OP)) && cmd_word[TRIG_BIT]) begin
-      trigger_counter <= cmd_word[25:0];
-    end
+    else if (next_cmd 
+             && ((command == CMD_DAC_WR) || (command == CMD_NO_OP)) 
+             && cmd_word[TRIG_BIT]) begin
+      trigger_counter <= cmd_word[24:0];
     // Otherwise decrement trigger counter to zero if nonzero
-    else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
+    end else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
   end
 
 
   //// ---- Errors
   // Error flag
   assign error = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && ~boot_readback_match) // Readback mismatch (boot fail)
-                 || (state != S_TRIG_WAIT && trigger && trigger_counter == 0) // Unexpected trigger
-                 || (state == S_DAC_WR && !dac_wr_done && !wait_for_trig && delay_timer == 0) // Delay too short
+                 || (state != S_TRIG_WAIT && trigger && trigger_counter <= 1) // Unexpected final trigger
+                 || (state == S_DAC_WR && !dac_wr_done && !wait_for_trig && delay_wait_done) // Delay too short
                  || (state == S_DAC_WR && ldac_shared && !ldac) // LDAC misalignment
                  || (next_cmd && next_cmd_state == S_ERROR) // Bad command
                  || (((cmd_done && expect_next) || read_next_dac_val_pair) && !next_cmd_ready) // Command buffer underflow
@@ -304,17 +310,17 @@ module shim_ad5676_dac_ctrl #(
   // Unexpected trigger
   always @(posedge clk) begin
     if (!resetn) unexp_trig <= 1'b0;
-    else if (state != S_TRIG_WAIT && trigger && trigger_counter == 0) unexp_trig <= 1'b1; // Unexpected trigger if triggered while not waiting for one
+    else if (state != S_TRIG_WAIT && trigger && trigger_counter <= 1) unexp_trig <= 1'b1; // Unexpected trigger if triggered while not waiting for the last one
+  end
+  // Delay too short
+  always @(posedge clk) begin
+    if (!resetn) delay_too_short <= 1'b0;
+    else if (state == S_DAC_WR && !dac_wr_done && !wait_for_trig && delay_wait_done) delay_too_short <= 1'b1; // Delay too short if delay timer is zero before DAC write is done
   end
   // LDAC misalignment
   always @(posedge clk) begin
     if (!resetn) ldac_misalign <= 1'b0;
     else if (state == S_DAC_WR && ldac_shared && !ldac) ldac_misalign <= 1'b1; // LDAC misalignment if LDAC is shared and another controller is writing to DAC
-  end
-  // Delay too short
-  always @(posedge clk) begin
-    if (!resetn) delay_too_short <= 1'b0;
-    else if (state == S_DAC_WR && !dac_wr_done && !wait_for_trig && delay_timer == 0) delay_too_short <= 1'b1; // Delay too short if delay timer is zero before DAC write is done
   end
   // Bad command
   always @(posedge clk) begin
@@ -473,6 +479,11 @@ module shim_ad5676_dac_ctrl #(
                           || (state == S_TEST_WR && dac_spi_cmd_done)
                           || (state == S_REQ_RD && dac_spi_cmd_done)
                           || (state == S_DAC_WR && dac_spi_cmd_done && !last_dac_channel);
+  // Latch ~(Chip Select) high time when coming out of reset
+  always @(posedge clk) begin
+    if (!resetn) n_cs_high_time_latched <= 5'd0;
+    else if (state == S_RESET) n_cs_high_time_latched <= n_cs_high_time;
+  end
   // ~(Chip Select) timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs_timer <= 5'd0;

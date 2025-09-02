@@ -1,4 +1,4 @@
-**Updated 2025-09-01**
+**Updated 2025-09-02**
 # ADS816x ADC Control Core
 
 The `shim_ads816x_adc_ctrl` module implements command-driven control for the Texas Instruments ADS816x ADC family (ADS8168, ADS8167, ADS8166) in the Rev D shim firmware. It handles SPI transactions, command sequencing, sample ordering, error detection, and synchronization for up to 8 ADC channels.
@@ -51,7 +51,9 @@ The state machine in `shim_ads816x_adc_ctrl` uses the following codes:
 | `6`        | `S_DELAY`    | Delay timer; waits for specified cycles before next command.                |
 | `7`        | `S_TRIG_WAIT`| Waits for external trigger signal.                                          |
 | `8`        | `S_ADC_RD`   | Performs ADC read sequence for all channels.                                |
-| `9`        | `S_ERROR`    | Error state; indicates boot/readback failure or invalid command/condition.  |
+| `9`        | `S_ADC_RD_CH`| Immediately and simply read a single ADC channel.                           |
+| `10`       | `S_LOOP`     | Loop state; manages command repetition.                                     |
+| `15`       | `S_ERROR`    | Error state; indicates boot/readback failure or invalid command/condition.  |
 
 State transitions are managed based on command type, trigger, delay, and error conditions.
 
@@ -113,35 +115,27 @@ The core operates based on 32-bit command words read from the command buffer. Ea
 
 ### Command Types
 
-- **NO_OP (`2'b00`)**: Delay or trigger wait.
-- **ADC_RD (`2'b01`)**: Read ADC samples.
-- **SET_ORD (`2'b10`)**: Set sample order for ADC channels.
-- **CANCEL (`2'b11`)**: Cancel current wait or delay.
+- **NO_OP (`3'd0`)**: Delay or trigger wait.
+- **SET_ORD (`3'd1`)**: Set sample order for ADC channels.
+- **ADC_RD (`3'd2`)**: Read ADC samples.
+- **ADC_RD_CH (`3'd3`)**: Read specific ADC channel.
+- **LOOP (`3'd4`)**: Loop command.
+- **CANCEL (`3'd7`)**: Cancel current wait or delay.
 
 ### Command Word Structure
 
-- `[31:30]` — Command code (2 bits).
-#### NO_OP (`2'b00`)
-- `[29]` — **TRIGGER WAIT**: If set, waits for external trigger (`trigger` input); otherwise, uses value as delay timer.
-- `[28]` — **CONTINUE**: If set, expects next command immediately after current completes; if not, returns to IDLE unless buffer underflow.
-- `[25:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for, minus one); otherwise, it is the delay timer (number of clock cycles to wait, zero is allowed).
+- `[31:29]` — Command code (3 bits).
+#### NO_OP (`3'd0`)
+- `[28]` — **TRIGGER WAIT**: If set, waits for external trigger (`trigger` input); otherwise, uses value as delay timer.
+- `[27]` — **CONTINUE**: If set, expects next command immediately after current completes; if not, returns to IDLE unless buffer underflow.
+- `[24:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for); otherwise, it is the delay timer (number of clock cycles to wait, zero is allowed).
 
-This command does not initiate SPI activity. If TRIGGER WAIT is set, the core waits for the specified number of external trigger events. Otherwise, it waits for the delay timer to expire. The trigger counter is offset by one, so a value of 0 means wait for one trigger, and a value of 1 means wait for two triggers. The core transitions to the next command if present; if CONTINUE is set and there is no next command, it goes to ERROR, otherwise returns to IDLE.
+This command does not initiate SPI activity. If TRIGGER WAIT is set, the core waits for the specified number of external trigger events. Otherwise, it waits for the delay timer to expire. The trigger counter represents the exact number of triggers to wait for, so a value of 0 means finish immediately (no triggers), and a value of 1 means wait for one trigger. The core transitions to the next command if present; if CONTINUE is set and there is no next command, it goes to ERROR, otherwise returns to IDLE.
 
 **State transitions:**
 - `S_IDLE -> S_TRIG_WAIT/S_DELAY -> S_IDLE/S_ERROR/next_cmd_state`
 
-#### ADC_RD (`2'b01`)
-- `[29]` — **TRIGGER WAIT**
-- `[28]` — **CONTINUE**
-- `[25:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for, minus one) after ADC read; otherwise, it is the delay timer (number of clock cycles to wait after ADC read, zero is allowed).
-
-Initiates an ADC read sequence for 8 channels in the configured order. In On-The-Fly mode, the core sends 8 SPI words of the form `{2'b10, ch, 11'd0}` (where `ch` is the channel index), followed by a dummy word to clock out the last sample (total 9 transactions). Each MISO word returns the sample for the previously requested channel (first word is garbage). After all samples are read, the core either waits for the specified number of triggers or delay cycles, depending on the TRIGGER WAIT flag. The trigger counter is offset by one, so a value of 0 means wait for one trigger, and a value of 1 means wait for two triggers. The core then transitions to the next command or IDLE/ERROR.
-
-**State transitions:**
-- `S_IDLE -> S_ADC_RD -> S_TRIG_WAIT/S_DELAY -> S_IDLE/S_ERROR/next_cmd_state`
-
-#### SET_ORD (`2'b10`)
+#### SET_ORD (`3'd1`)
 - `[23:21]` — Channel 7 index
 - `[20:18]` — Channel 6 index
 - `[17:15]` — Channel 5 index
@@ -151,13 +145,39 @@ Initiates an ADC read sequence for 8 channels in the configured order. In On-The
 - `[5:3]`   — Channel 1 index
 - `[2:0]`   — Channel 0 index
 
-Configures sample order for subsequent ADC_RD commands. Default order is 0–7. The command is processed in one cycle; the core transitions to the next command if present, otherwise to IDLE or ERROR.
+Configures sample order for subsequent ADC_RD commands. Default order is 0–7. The command is processed in one cycle; the core transitions to the next command if present, otherwise to IDLE.
 
 **State transitions:**
-- `S_IDLE -> S_IDLE/S_ERROR/next_cmd_state`
+- `S_IDLE -> S_IDLE/next_cmd_state`
 
-#### CANCEL (`2'b11`)
-- `[29:0]` — Unused.
+#### ADC_RD (`3'd2`)
+- `[28]` — **TRIGGER WAIT**
+- `[27]` — **CONTINUE**
+- `[24:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for) after ADC read; otherwise, it is the delay timer (number of clock cycles to wait after ADC read, zero is allowed).
+
+Initiates an ADC read sequence for 8 channels in the configured order. In On-The-Fly mode, the core sends 8 SPI words of the form `{2'b10, ch, 11'd0}` (where `ch` is the channel index), followed by a dummy word to clock out the last sample (total 9 transactions). Each MISO word returns the sample for the previously requested channel (first word is garbage). After all samples are read, the core either waits for the specified number of triggers or delay cycles, depending on the TRIGGER WAIT flag. The trigger counter represents the exact number of triggers to wait for, so a value of 0 means finish immediately (no triggers), and a value of 1 means wait for one trigger. The core then transitions to the next command or IDLE/ERROR.
+
+**State transitions:**
+- `S_IDLE -> S_ADC_RD -> S_TRIG_WAIT/S_DELAY -> S_IDLE/S_ERROR/next_cmd_state`
+
+#### ADC_RD_CH (`3'd3`)
+- `[2:0]` — **Channel**: ADC channel to read (0-7)
+
+Immediately and simply reads a single given ADC channel.  Has no delays or trigger waits after completion.
+
+**State transitions:**
+- `S_IDLE -> S_ADC_RD_CH -> S_IDLE/next_cmd_state`
+
+#### LOOP (`3'd4`)
+- `[24:0]` — **Loop count**: Number of times to repeat the next command
+
+Sets up a loop for the next command. The next command will be repeated the specified number of times.
+
+**State transitions:**
+- `S_IDLE -> S_LOOP_NEXT -> S_IDLE/S_ERROR/next_cmd_state`
+
+#### CANCEL (`3'd7`)
+- `[28:0]` — Unused.
 
 Cancels the current wait or delay if issued while the core is in DELAY or TRIG_WAIT state (or just finishing ADC_RD, about to transition to one of those). This is the only command that can interrupt a wait. After canceling, the core returns to IDLE.
 

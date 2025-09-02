@@ -1,4 +1,4 @@
-**Updated 2025-09-01**
+**Updated 2025-09-02**
 # AD5676 DAC Control Core
 
 The `shim_ad5676_dac_ctrl` module implements command-driven control for the Analog Devices AD5676 DAC in the Rev D shim firmware. It manages SPI transactions, command sequencing, per-channel calibration, error detection, and synchronization for all 8 DAC channels.
@@ -50,7 +50,8 @@ The state machine in `shim_ad5676_dac_ctrl` uses the following codes:
 | `6`        | `S_DELAY`    | Delay timer; waits for specified cycles before next command.                |
 | `7`        | `S_TRIG_WAIT`| Waits for external trigger signal.                                          |
 | `8`        | `S_DAC_WR`   | Performs DAC write sequence for all channels.                               |
-| `9`        | `S_ERROR`    | Error state; indicates boot/readback failure or invalid command/condition.  |
+| `9`        | `S_DAC_WR_CH`| Immediately and simply write to a single DAC channel.                       |
+| `15`       | `S_ERROR`    | Error state; indicates boot/readback failure or invalid command/condition.  |
 
 State transitions are managed based on command type, trigger, delay, and error conditions.
 
@@ -115,44 +116,31 @@ The core operates based on 32-bit word commands read from the command buffer. Th
 
 ### Command Types
 
-- **NO_OP (`2'b00`):** Delay or trigger wait, optional LDAC pulse.
-- **DAC_WR (`2'b01`):** Write DAC values (4 words, 2 channels each).
-- **SET_CAL (`2'b10`):** Set calibration value for a channel.
-- **CANCEL (`2'b11`):** Cancel current wait or delay.
+- **NO_OP (`3'd0`):** Delay or trigger wait, optional LDAC pulse.
+- **SET_CAL (`3'd1`):** Set calibration value for a channel.
+- **DAC_WR (`3'd2`):** Write DAC values (4 words, 2 channels each).
+- **DAC_WR_CH (`3'd3`):** Write single DAC channel.
+- **CANCEL (`3'd7`):** Cancel current wait or delay.
 
 ### Command Word Structure
 
-- `[31:30]` — **Command Code** (2 bits).
+- `[31:29]` — **Command Code** (3 bits).
 
-#### NO_OP (`2'b00`)
-- `[29]` — **TRIGGER WAIT**: If set, waits for external trigger (`trigger` input); otherwise, uses value as delay timer.
-- `[28]` — **CONTINUE**: If set, expects next command immediately after current completes; if not, returns to IDLE unless buffer underflow.
-- `[27]` — **LDAC**: If set, pulses `ldac` output at end of command.
-- `[25:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for, minus one); otherwise, it is the delay timer (number of clock cycles to wait, zero is allowed).
+#### NO_OP (`3'd0`)
+- `[28]` — **TRIGGER WAIT**: If set, waits for external trigger (`trigger` input); otherwise, uses value as delay timer.
+- `[27]` — **CONTINUE**: If set, expects next command immediately after current completes; if not, returns to IDLE unless buffer underflow.
+- `[26]` — **LDAC**: If set, pulses `ldac` output at end of command.
+- `[24:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for); otherwise, it is the delay timer (number of clock cycles to wait, zero is allowed).
 
 This command does not update DAC values, but can pulse LDAC if requested. If TRIGGER WAIT is set, the core waits for the specified number of external trigger events. Otherwise, it waits for the delay timer to expire.
 
-Note that the trigger counter is offset by one, so a value of 0 means wait for one trigger, and a value of 1 means wait for two triggers.
+Note that the trigger counter represents the exact number of triggers to wait for, so a value of 0 means finish immediately (no triggers), and a value of 1 means wait for one trigger.
 
 **State transitions:**
 - `S_IDLE -> S_TRIG_WAIT/S_DELAY -> S_IDLE/S_ERROR/next_cmd_state`
 - Transition to the next command state if one is present. Otherwise, go to `S_ERROR` if CONTINUE is set, or return to `S_IDLE` if not.
 
-#### DAC_WR (`2'b01`)
-- `[29]` — **TRIGGER WAIT**
-- `[28]` — **CONTINUE**
-- `[27]` — **LDAC**
-- `[25:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for, minus one) after DAC update; otherwise, it is the delay timer (number of clock cycles to wait after DAC update, zero is allowed).
-
-Initiates a DAC update sequence. The core expects 4 subsequent words, each containing two 16-bit DAC values: `[31:16]` for channel N+1, `[15:0]` for channel N. Channels are updated in pairs: (0,1), (2,3), (4,5), (6,7). LDAC is pulsed after all channels are updated if the LDAC flag is set.
-
-After the DAC update, the core either waits for the specified number of triggers or delay cycles, depending on the TRIGGER WAIT flag. Again, note that the trigger counter is offset by one, so a value of 0 means wait for one trigger, and a value of 1 means wait for two triggers.
-
-**State transitions:**
-- `S_IDLE -> S_DAC_WR -> S_TRIG_WAIT/S_DELAY -> S_IDLE/S_ERROR/next_cmd_state`
-- Transition to the next command state if one is present. Otherwise, go to `S_ERROR` if CONTINUE is set, or return to `S_IDLE` if not.
-
-#### SET_CAL (`2'b10`)
+#### SET_CAL (`3'd1`)
 - `[18:16]` — **Channel Index** (0–7)
 - `[15:0]`  — **Signed Calibration Value** (range: -`ABS_CAL_MAX` to `ABS_CAL_MAX`)
 
@@ -160,9 +148,34 @@ Sets per-channel signed calibration value. Calibration is applied to DAC updates
 
 **State transitions:**
 - `S_IDLE -> S_IDLE/S_ERROR/next_cmd_state`
+- Will set `cal_oob` if the calibration value is out of bounds.
+- Transition to the next command state if one is present. Otherwise, return to `S_IDLE`.
+
+#### DAC_WR (`3'd2`)
+- `[28]` — **TRIGGER WAIT**
+- `[27]` — **CONTINUE**
+- `[26]` — **LDAC**
+- `[24:0]` — **Value**: If TRIGGER WAIT is set, this is the trigger counter (number of triggers to wait for) after DAC update; otherwise, it is the delay timer (number of clock cycles to wait after DAC update, zero is allowed).
+
+Initiates a DAC update sequence. The core expects 4 subsequent words, each containing two 16-bit DAC values: `[31:16]` for channel N+1, `[15:0]` for channel N. Channels are updated in pairs: (0,1), (2,3), (4,5), (6,7). LDAC is pulsed after all channels are updated if the LDAC flag is set.
+
+After the DAC update, the core either waits for the specified number of triggers or delay cycles, depending on the TRIGGER WAIT flag. The trigger counter represents the exact number of triggers to wait for, so a value of 0 means finish immediately (no triggers), and a value of 1 means wait for one trigger.
+
+**State transitions:**
+- `S_IDLE -> S_DAC_WR -> S_TRIG_WAIT/S_DELAY -> S_IDLE/S_ERROR/next_cmd_state`
 - Transition to the next command state if one is present. Otherwise, go to `S_ERROR` if CONTINUE is set, or return to `S_IDLE` if not.
 
-#### CANCEL (`2'b11`)
+#### DAC_WR_CH (`3'd3`)
+- `[18:16]` — **Channel Index** (0–7)
+- `[15:0]` — **DAC Value**
+
+Writes a single DAC channel with the specified value. Has no delays or trigger waits after completion, and immediately pulses LDAC.
+
+**State transitions:**
+- `S_IDLE -> S_DAC_WR_CH -> S_IDLE/next_cmd_state`
+- Transition to the next command state if one is present. Otherwise return to `S_IDLE`.
+
+#### CANCEL (`3'd7`)
 Cancels current wait or delay if issued while the core is in DELAY or TRIG_WAIT state (or just finishing DAC_WR, about to transition to one of those). This is the only command that can be read without the previous command being finished. After canceling, the core returns to IDLE.
 
 **State transitions:**

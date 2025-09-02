@@ -68,17 +68,19 @@ module shim_ads816x_adc_ctrl (
   localparam S_DELAY     = 4'd6;
   localparam S_TRIG_WAIT = 4'd7;
   localparam S_ADC_RD    = 4'd8;
-  localparam S_ERROR     = 4'd9;
+  localparam S_ADC_RD_CH = 4'd9;
   localparam S_LOOP_NEXT = 4'd10;
+  localparam S_ERROR     = 4'd15;
 
   // Command types
-  localparam CMD_NO_OP   = 3'b000;
-  localparam CMD_LOOP    = 3'b001;
-  localparam CMD_ADC_RD  = 3'b010;
-  localparam CMD_SET_ORD = 3'b100;
-  localparam CMD_CANCEL  = 3'b111;
+  localparam CMD_NO_OP   = 3'd0;
+  localparam CMD_SET_ORD = 3'd1;
+  localparam CMD_ADC_RD  = 3'd2;
+  localparam CMD_RD_CH   = 3'd3;
+  localparam CMD_LOOP    = 3'd4;
+  localparam CMD_CANCEL  = 3'd7;
 
-  // Command bits
+  // Command bit positions
   localparam TRIG_BIT = 28;
   localparam CONT_BIT = 27;
 
@@ -111,9 +113,11 @@ module shim_ads816x_adc_ctrl (
   reg  [31:0] loop_cmd_word;
   // Command word toggled bits
   reg         wait_for_trig;
+  wire        trig_wait_done;
+  wire        delay_wait_done;
   reg         expect_next;
   // Delay timer and trigger counter
-  reg  [25:0] delay_timer, trigger_counter;
+  reg  [24:0] delay_timer, trigger_counter;
   // ADC sample order
   reg  [ 2:0] sample_order [0:7];
 
@@ -173,11 +177,7 @@ module shim_ads816x_adc_ctrl (
                     : cmd_buf_word;
   assign command =  cmd_word[31:29];
   assign next_cmd_ready = (looping) ? 1'b1 : !cmd_buf_empty;
-  // Allows a cancel command to cancel a delay or trigger wait
-  assign cancel_wait = (state == S_DELAY || state == S_TRIG_WAIT || (state == S_ADC_RD && adc_rd_done))
-                        && next_cmd_ready
-                        && command == CMD_CANCEL;
-  // Allows a cancel command to cancel a loop
+  // Allow a cancel command to cancel a loop
   assign cancel_loop = (loop_counter > 0 && !cmd_buf_empty && cmd_buf_word[31:29] == CMD_CANCEL);
   // Command word read enable
   assign cmd_buf_rd_en = (state != S_ERROR) && next_cmd_ready && !looping && (cmd_done || cancel_wait);
@@ -187,23 +187,33 @@ module shim_ads816x_adc_ctrl (
       wait_for_trig <= 1'b0;
       expect_next <= 1'b0;
     end else if (next_cmd) begin
+      // Set wait_for_trig and expect_next flags from command bits if NO_OP or ADC_RD command
       if ((command == CMD_NO_OP) || (command == CMD_ADC_RD)) begin
         wait_for_trig <= cmd_word[TRIG_BIT];
         expect_next <= cmd_word[CONT_BIT];
+      // Otherwise set flags to 0
       end else begin
-        wait_for_trig <= 1'b0; // No wait for trigger for SET_ORD or CANCEL commands
-        expect_next <= 1'b0; // No expectation for next command for SET_ORD or CANCEL commands
+        wait_for_trig <= 1'b0;
+        expect_next <= 1'b0;
       end
     end
   end
 
 
   //// ---- State machine transitions
+  // Allow a cancel command to cancel a delay or trigger wait
+  assign cancel_wait = (state == S_DELAY || state == S_TRIG_WAIT || (state == S_ADC_RD && adc_rd_done))
+                        && next_cmd_ready
+                        && command == CMD_CANCEL;
+  // Trigger wait is done when trigger counter occurs at 1, or finish immediately if trigger counter was 0
+  assign trig_wait_done = (trigger && trigger_counter == 1) || trigger_counter == 0;
+  // Delay wait is done when delay timer reaches 0
+  assign delay_wait_done = (delay_timer == 0);
   // Current command is finished
   assign cmd_done = (state == S_IDLE && next_cmd_ready)
-                    || (state == S_DELAY && delay_timer == 0)
-                    || (state == S_TRIG_WAIT && trigger && trigger_counter == 0)
-                    || (state == S_ADC_RD && adc_rd_done && !wait_for_trig && delay_timer == 0)
+                    || (state == S_DELAY && delay_wait_done)
+                    || (state == S_TRIG_WAIT && trig_wait_done)
+                    || (state == S_ADC_RD && adc_rd_done && (wait_for_trig ? trig_wait_done : delay_wait_done))
                     || (state == S_LOOP_NEXT && next_cmd_ready);
   assign next_cmd = cmd_done && next_cmd_ready;
   // Next state from upcoming command
@@ -240,12 +250,6 @@ module shim_ads816x_adc_ctrl (
     else if ((state == S_TEST_RD) && !n_miso_data_ready_mosi_clk && boot_readback_match) setup_done <= 1'b1;
   end
 
-  // Latch n_cs_high_time when coming out of reset
-  always @(posedge clk) begin
-    if (!resetn) n_cs_high_time_latched <= 8'd0;
-    else if (state == S_RESET) n_cs_high_time_latched <= n_cs_high_time;
-  end
-
 
   //// ---- Looping
   assign looping = (loop_counter > 0 && state != S_LOOP_NEXT);
@@ -263,32 +267,34 @@ module shim_ads816x_adc_ctrl (
 
   //// ---- Delay timer
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR || cancel_wait) delay_timer <= 26'd0;
+    if (!resetn || state == S_ERROR || cancel_wait) delay_timer <= 25'd0;
     // If the next command is an ADC read or no-op with a delay wait, load the delay timer from command word
     else if (next_cmd
              && ((command == CMD_ADC_RD) || (command == CMD_NO_OP))
-             && !cmd_word[TRIG_BIT]) delay_timer <= cmd_word[25:0];
+             && !cmd_word[TRIG_BIT]) begin
+      delay_timer <= cmd_word[24:0];
     // Otherwise decrement delay timer to zero if nonzero
-    else if (delay_timer > 0) delay_timer <= delay_timer - 1;
+    end else if (delay_timer > 0) delay_timer <= delay_timer - 1;
   end
 
  
   //// ---- Trigger counter
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR || cancel_wait) trigger_counter <= 26'd0;
+    if (!resetn || state == S_ERROR || cancel_wait) trigger_counter <= 25'd0;
     // If the next command is an ADC read or no-op with a trigger wait, load the trigger counter from command word
     else if (next_cmd
              && ((command == CMD_ADC_RD) || (command == CMD_NO_OP))
-             && cmd_word[TRIG_BIT]) trigger_counter <= cmd_word[25:0];
+             && cmd_word[TRIG_BIT]) begin
+      trigger_counter <= cmd_word[24:0];
     // Otherwise decrement trigger counter on trigger to zero if nonzero
-    else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
+    end else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
   end
 
   //// ---- Errors
   // Error flag
   assign error = (state == S_TEST_RD && !n_miso_data_ready_mosi_clk && ~boot_readback_match) // Readback mismatch (boot fail)
-                 || (state != S_TRIG_WAIT && trigger && trigger_counter == 0) // Unexpected trigger
-                 || (state == S_ADC_RD && !adc_rd_done && !wait_for_trig && delay_timer == 0) // Delay too short
+                 || (state != S_TRIG_WAIT && trigger && trigger_counter <= 1) // Unexpected trigger
+                 || (state == S_ADC_RD && !adc_rd_done && !wait_for_trig && delay_wait_done) // Delay too short
                  || (next_cmd && next_cmd_state == S_ERROR) // Bad command
                  || (cmd_done && expect_next && !next_cmd_ready) // Command buffer underflow
                  || (try_data_write && data_buf_full); // Data buffer overflow
@@ -301,12 +307,12 @@ module shim_ads816x_adc_ctrl (
   // Unexpected trigger
   always @(posedge clk) begin
     if (!resetn) unexp_trig <= 1'b0;
-    else if (state != S_TRIG_WAIT && trigger && trigger_counter == 0) unexp_trig <= 1'b1;
+    else if (state != S_TRIG_WAIT && trigger && trigger_counter <= 1) unexp_trig <= 1'b1;
   end
   // Delay too short
   always @(posedge clk) begin
     if (!resetn) delay_too_short <= 1'b0;
-    else if (state == S_ADC_RD && !adc_rd_done && !wait_for_trig && delay_timer == 0) delay_too_short <= 1'b1; // Delay too short if delay timer is zero before ADC read is done
+    else if (state == S_ADC_RD && !adc_rd_done && !wait_for_trig && delay_wait_done) delay_too_short <= 1'b1; // Delay too short if delay timer is zero before ADC read is done
   end
   // Bad command
   always @(posedge clk) begin
@@ -377,6 +383,11 @@ module shim_ads816x_adc_ctrl (
                           || (state == S_TEST_WR && adc_spi_cmd_done)
                           || (state == S_REQ_RD && adc_spi_cmd_done)
                           || (state == S_ADC_RD && adc_spi_cmd_done && !last_adc_word);
+  // Latch ~(Chip Select) high time when coming out of reset
+  always @(posedge clk) begin
+    if (!resetn) n_cs_high_time_latched <= 8'd0;
+    else if (state == S_RESET) n_cs_high_time_latched <= n_cs_high_time;
+  end
   // ~(Chip Select) timer
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) n_cs_timer <= 8'd0;

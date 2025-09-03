@@ -73,12 +73,12 @@ module shim_ads816x_adc_ctrl (
   localparam S_ERROR     = 4'd15;
 
   // Command types
-  localparam CMD_NO_OP   = 3'd0;
-  localparam CMD_SET_ORD = 3'd1;
-  localparam CMD_ADC_RD  = 3'd2;
-  localparam CMD_RD_CH   = 3'd3;
-  localparam CMD_LOOP    = 3'd4;
-  localparam CMD_CANCEL  = 3'd7;
+  localparam CMD_NO_OP     = 3'd0;
+  localparam CMD_SET_ORD   = 3'd1;
+  localparam CMD_ADC_RD    = 3'd2;
+  localparam CMD_ADC_RD_CH = 3'd3;
+  localparam CMD_LOOP      = 3'd4;
+  localparam CMD_CANCEL    = 3'd7;
 
   // Command bit positions
   localparam TRIG_BIT = 28;
@@ -159,7 +159,9 @@ module shim_ads816x_adc_ctrl (
 
 
   //// ---- Data buffer write signals
-  wire        adc_data_ready;
+  reg  [ 2:0] single_reads;
+  wire        adc_pair_data_ready;
+  wire        adc_ch_data_ready;
   wire        debug_miso_data;
   wire        debug_state_transition;
   wire        debug_n_cs_timer;
@@ -191,6 +193,10 @@ module shim_ads816x_adc_ctrl (
       if ((command == CMD_NO_OP) || (command == CMD_ADC_RD)) begin
         wait_for_trig <= cmd_word[TRIG_BIT];
         expect_next <= cmd_word[CONT_BIT];
+      // For the single-channel ADC_RD_CH command, always set wait_for_trig to 1 and expect_next to 0
+      end else if (command == CMD_ADC_RD_CH) begin
+        wait_for_trig <= 1'b1;
+        expect_next <= 1'b0;
       // Otherwise set flags to 0
       end else begin
         wait_for_trig <= 1'b0;
@@ -214,16 +220,18 @@ module shim_ads816x_adc_ctrl (
                     || (state == S_DELAY && delay_wait_done)
                     || (state == S_TRIG_WAIT && trig_wait_done)
                     || (state == S_ADC_RD && adc_rd_done && (wait_for_trig ? trig_wait_done : delay_wait_done))
+                    || (state == S_ADC_RD_CH && adc_rd_done)
                     || (state == S_LOOP_NEXT && next_cmd_ready);
   assign next_cmd = cmd_done && next_cmd_ready;
   // Next state from upcoming command
   assign next_cmd_state = !next_cmd_ready ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
-                           : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
-                           : (command == CMD_ADC_RD) ? S_ADC_RD // If command is ADC read, go to ADC read state
-                           : (command == CMD_LOOP) ? ((loop_counter == 0) ? S_LOOP_NEXT : S_ERROR) // If command is LOOP, go to IDLE if not looping, otherwise ERROR
-                           : (command == CMD_SET_ORD) ? ((loop_counter == 0) ? S_IDLE : S_ERROR) // If command is SET_ORD, go to IDLE if not looping, otherwise ERROR
-                           : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
-                           : S_ERROR; // If command is unrecognized, go to ERROR state
+                          : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
+                          : (command == CMD_SET_ORD) ? ((loop_counter == 0) ? S_IDLE : S_ERROR) // If command is SET_ORD, go to IDLE if not looping, otherwise ERROR
+                          : (command == CMD_ADC_RD) ? S_ADC_RD // If command is ADC read, go to ADC read state
+                          : (command == CMD_ADC_RD_CH) ? S_ADC_RD_CH // If command is single-channel ADC read, go to ADC read state
+                          : (command == CMD_LOOP) ? ((loop_counter == 0) ? S_LOOP_NEXT : S_ERROR) // If command is LOOP, go to IDLE if not looping, otherwise ERROR
+                          : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
+                          : S_ERROR; // If command is unrecognized, go to ERROR state
   // Signal indicating the core is waiting for a trigger
   assign waiting_for_trig = (state == S_TRIG_WAIT);
   // State transition
@@ -286,6 +294,9 @@ module shim_ads816x_adc_ctrl (
              && ((command == CMD_ADC_RD) || (command == CMD_NO_OP))
              && cmd_word[TRIG_BIT]) begin
       trigger_counter <= cmd_word[24:0];
+    // Single-channel ADC read commands immediately finish
+    end else if (next_cmd && command == CMD_ADC_RD_CH) begin
+      trigger_counter <= 25'd0;
     // Otherwise decrement trigger counter on trigger to zero if nonzero
     end else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
   end
@@ -353,8 +364,9 @@ module shim_ads816x_adc_ctrl (
 
   //// ---- ADC word sequencing
   // ADC word count status (read comes in one word after writing the read request, so you need 8 + 1 = 9 words for 8 reads)
-  assign last_adc_word = (adc_word_idx == 8);
+  assign last_adc_word = (state == S_ADC_RD && adc_word_idx == 8) || (state == S_ADC_RD_CH && adc_word_idx == 1);
   assign adc_spi_cmd_done = ((state == S_ADC_RD)
+                             || (state == S_ADC_RD_CH)
                              || (state == S_TEST_WR)
                              || (state == S_REQ_RD)
                              || (state == S_TEST_RD))
@@ -362,14 +374,14 @@ module shim_ads816x_adc_ctrl (
   // ADC done signal
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) adc_rd_done <= 1'b0;
-    else if (state == S_ADC_RD && adc_spi_cmd_done && last_adc_word) adc_rd_done <= 1'b1;
+    else if (last_adc_word && adc_spi_cmd_done) adc_rd_done <= 1'b1;
     else adc_rd_done <= 1'b0;
   end
   // ADC SPI word index
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) adc_word_idx <= 4'd0;
-    else if (next_cmd && command == CMD_ADC_RD) adc_word_idx <= 4'd0;
-    else if (state == S_ADC_RD && adc_spi_cmd_done) begin
+    else if (next_cmd && (command == CMD_ADC_RD || command == CMD_ADC_RD_CH)) adc_word_idx <= 4'd0;
+    else if ((state == S_ADC_RD || state == S_ADC_RD_CH) && adc_spi_cmd_done) begin
       if (!last_adc_word) adc_word_idx <= adc_word_idx + 1;
       else adc_word_idx <= 4'd0;
     end
@@ -378,11 +390,13 @@ module shim_ads816x_adc_ctrl (
 
   //// ---- SPI MOSI control
   // Start the next SPI command
-  assign start_spi_cmd = (next_cmd && command == CMD_ADC_RD)
+  assign start_spi_cmd =  (next_cmd && command == CMD_ADC_RD)
+                          || (next_cmd && command == CMD_ADC_RD_CH)
                           || (state == S_INIT)
                           || (state == S_TEST_WR && adc_spi_cmd_done)
                           || (state == S_REQ_RD && adc_spi_cmd_done)
-                          || (state == S_ADC_RD && adc_spi_cmd_done && !last_adc_word);
+                          || (state == S_ADC_RD && adc_spi_cmd_done && !last_adc_word)
+                          || (state == S_ADC_RD_CH && adc_spi_cmd_done && !last_adc_word);
   // Latch ~(Chip Select) high time when coming out of reset
   always @(posedge clk) begin
     if (!resetn) n_cs_high_time_latched <= 8'd0;
@@ -415,7 +429,7 @@ module shim_ads816x_adc_ctrl (
   end
   // SPI MOSI bit
   assign mosi = mosi_shift_reg[23];
-  // MOSI shift register
+  // SPI MOSI shift register
   always @(posedge clk) begin
     // Reset MOSI shift register on reset or error
     if (!resetn || state == S_ERROR) mosi_shift_reg <= 24'd0;
@@ -435,13 +449,18 @@ module shim_ads816x_adc_ctrl (
                  || ((state == S_ADC_RD) && adc_spi_cmd_done)) begin
       if (!last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(sample_order[adc_word_idx[2:0]]), 8'd0};
       else if (last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(3'b0), 8'd0};
+    end else if ((next_cmd && (next_cmd_state == S_ADC_RD_CH))
+                  || ((state == S_ADC_RD_CH) && adc_spi_cmd_done)) begin
+      if (!last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(cmd_word[2:0]), 8'd0};
+      else if (last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(3'b0), 8'd0};
     end
   end
   // Start MISO read in MOSI clock domain
   // (should show up 1 cycle later on readback MISO clock than equivalent MOSI clock cycle, plus 2 for the synchronizer)
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) start_miso_mosi_clk <= 1'b0; // Reset start MISO read signal on reset or error
-    else if ((state == S_TEST_RD || (state == S_ADC_RD && adc_word_idx > 0))
+    else if ((state == S_TEST_RD 
+              || ((state == S_ADC_RD || state == S_ADC_RD_CH) && adc_word_idx > 0))
              && n_cs_timer == 2) start_miso_mosi_clk <= 1'b1;
     else start_miso_mosi_clk <= 1'b0;
   end
@@ -494,7 +513,20 @@ module shim_ads816x_adc_ctrl (
 
   //// ---- ADC data output
   // When two data words are ready (one stored, one just read), adc data word is ready
-  assign adc_data_ready = (state != S_TEST_RD && setup_done && !n_miso_data_ready_mosi_clk && miso_stored);
+  assign adc_pair_data_ready = (state != S_TEST_RD && setup_done && !n_miso_data_ready_mosi_clk && miso_stored && single_reads == 0);
+  // When reading one channel, data word is ready when one word is read
+  assign adc_ch_data_ready = (single_reads > 0 && !n_miso_data_ready_mosi_clk);
+  // Single read count (could be two in a row, make sure the second isn't lost)
+  always @(posedge clk) begin
+    if (!resetn || state == S_ERROR) single_reads <= 2'b0;
+    // Increment the count by 1 if CMD_ADC_RD_CH command is received
+    else if (next_cmd && command == CMD_ADC_RD_CH) begin
+      // Leave as is if trying to increment and decrement at the same time
+      if (adc_ch_data_ready) single_reads <= single_reads;
+      else single_reads <= single_reads + 1;
+    // Decrement the count by 1 if a single read data word is written
+    end else if (adc_ch_data_ready) single_reads <= single_reads - 1;
+  end
   // DEBUG: MISO data ready in MOSI clock domain
   assign debug_miso_data = (state == S_TEST_RD && !n_miso_data_ready_mosi_clk && debug);
   // DEBUG: State transition
@@ -504,7 +536,8 @@ module shim_ads816x_adc_ctrl (
   // DEBUG: SPI bit counter when it changes from 0 to nonzero
   assign debug_spi_bit = (!running_spi_bit && spi_bit > 0 && debug); 
   // Attempt to write data to the data buffer if any of the following are true
-  assign try_data_write = adc_data_ready
+  assign try_data_write = adc_pair_data_ready
+                          || adc_ch_data_ready
                           || debug_miso_data
                           || debug_state_transition
                           || debug_n_cs_timer
@@ -520,13 +553,13 @@ module shim_ads816x_adc_ctrl (
   // Alternate storing and writing MISO data
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) miso_stored <= 1'b0; // Reset MISO stored flag on reset or error
-    else if (state != S_TEST_RD && !n_miso_data_ready_mosi_clk) miso_stored <= ~miso_stored; // Toggle MISO stored flag when MISO data is ready to be read
+    else if (state != S_TEST_RD && !n_miso_data_ready_mosi_clk && single_reads == 0) miso_stored <= ~miso_stored; // Toggle MISO stored flag when MISO data is ready to be read
   end
   // MISO data storage
   // Store the last MISO data word when it is ready
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) miso_data_storage <= 16'd0; // Reset MISO data storage on reset or error
-    else if (!n_miso_data_ready_mosi_clk) begin
+    else if (!n_miso_data_ready_mosi_clk && single_reads == 0) begin
       miso_data_storage <= miso_data_mosi_clk; // Store the last MISO data word
     end
   end
@@ -536,8 +569,10 @@ module shim_ads816x_adc_ctrl (
     if (!resetn) data_word <= 32'd0; // Reset data word on reset
     else if (try_data_write && !data_buf_full) begin
       // If ADC data is ready, write the two MISO data words to the data buffer
-      if (adc_data_ready) begin
+      if (adc_pair_data_ready) begin
         data_word <= {miso_data_mosi_clk[15:0], miso_data_storage}; // Write the two MISO data words to the data buffer
+      end else if (adc_ch_data_ready) begin
+        data_word <= {16'd0, miso_data_mosi_clk[15:0]}; // Write single MISO data word with upper 16 bits zeroed
       end else if (debug_miso_data) begin
         data_word <= {DBG_MISO_DATA, 12'd0, miso_data_mosi_clk[15:0]}; // Write MISO data with debug code
       end else if (debug_state_transition) begin

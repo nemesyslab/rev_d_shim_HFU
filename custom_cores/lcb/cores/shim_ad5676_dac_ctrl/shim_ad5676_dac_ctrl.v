@@ -82,11 +82,11 @@ module shim_ad5676_dac_ctrl #(
   localparam S_ERROR     = 4'd15;
 
   // Command types
-  localparam CMD_NO_OP   = 3'd0;
-  localparam CMD_SET_CAL = 3'd1;
-  localparam CMD_DAC_WR  = 3'd2;
-  localparam CMD_WR_CH   = 3'd3;
-  localparam CMD_CANCEL  = 3'd7;
+  localparam CMD_NO_OP     = 3'd0;
+  localparam CMD_SET_CAL   = 3'd1;
+  localparam CMD_DAC_WR    = 3'd2;
+  localparam CMD_DAC_WR_CH = 3'd3;
+  localparam CMD_CANCEL    = 3'd7;
 
   // Command bit positions
   localparam TRIG_BIT = 28;
@@ -140,6 +140,8 @@ module shim_ad5676_dac_ctrl #(
   reg  signed [15:0] second_dac_val_signed;
   reg  signed [16:0] second_dac_val_cal_signed;
   reg  [14:0] abs_dac_val [0:7];
+  wire        first_dac_val_cal_signed_oob;
+  wire        second_dac_val_cal_signed_oob;
 
   //// ---- DAC MOSI SPI control
   reg         read_next_dac_val_pair;
@@ -204,6 +206,11 @@ module shim_ad5676_dac_ctrl #(
         do_ldac <= cmd_word[LDAC_BIT];
         wait_for_trig <= cmd_word[TRIG_BIT];
         expect_next <= cmd_word[CONT_BIT];
+      // For the single-channel DAC_WR_CH command, always set do_ldac to 1, wait_for_trig to 1, and expect_next to 0
+      end else if (command == CMD_DAC_WR_CH) begin
+        do_ldac <= 1'b1;
+        wait_for_trig <= 1'b1;
+        expect_next <= 1'b0;
       // Otherwise set flags to 0
       end else begin
         do_ldac <= 1'b0;
@@ -227,15 +234,17 @@ module shim_ad5676_dac_ctrl #(
   assign cmd_done = (state == S_IDLE && next_cmd_ready) 
                     || (state == S_DELAY && delay_wait_done)
                     || (state == S_TRIG_WAIT && trig_wait_done)
-                    || (state == S_DAC_WR && dac_wr_done && (wait_for_trig ? trig_wait_done : delay_wait_done));
+                    || (state == S_DAC_WR && dac_wr_done && (wait_for_trig ? trig_wait_done : delay_wait_done))
+                    || (state == S_DAC_WR_CH && dac_wr_done);
   assign next_cmd = cmd_done && next_cmd_ready;
   // Next state from upcoming command
-  assign next_cmd_state =  !next_cmd_ready ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
-                           : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
-                           : (command == CMD_DAC_WR) ? S_DAC_WR // If command is DAC write, go to DAC_WR state
-                           : (command == CMD_SET_CAL) ? S_IDLE // If command is SET_CAL, go to IDLE
-                           : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE 
-                           : S_ERROR; // If command is not recognized, go to ERROR state
+  assign next_cmd_state = !next_cmd_ready ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
+                          : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
+                          : (command == CMD_SET_CAL) ? S_IDLE // If command is SET_CAL, go to IDLE
+                          : (command == CMD_DAC_WR) ? S_DAC_WR // If command is DAC write, go to DAC_WR state
+                          : (command == CMD_DAC_WR_CH) ? S_DAC_WR_CH // If command is single-channel DAC write, go to DAC_WR_CH state
+                          : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE 
+                          : S_ERROR; // If command is not recognized, go to ERROR state
   // Waiting for trigger flag
   assign waiting_for_trig = (state == S_TRIG_WAIT);
   // State transition
@@ -285,6 +294,9 @@ module shim_ad5676_dac_ctrl #(
              && ((command == CMD_DAC_WR) || (command == CMD_NO_OP)) 
              && cmd_word[TRIG_BIT]) begin
       trigger_counter <= cmd_word[24:0];
+    // Single-channel DAC write commands immediately finish
+    end else if (next_cmd && command == CMD_DAC_WR_CH) begin
+      trigger_counter <= 25'd0;
     // Otherwise decrement trigger counter to zero if nonzero
     end else if (trigger_counter > 0 && trigger) trigger_counter <= trigger_counter - 1;
   end
@@ -295,7 +307,7 @@ module shim_ad5676_dac_ctrl #(
   assign error = (state == S_TEST_RD && ~n_miso_data_ready_mosi_clk && ~boot_readback_match) // Readback mismatch (boot fail)
                  || (state != S_TRIG_WAIT && trigger && trigger_counter <= 1) // Unexpected final trigger
                  || (state == S_DAC_WR && !dac_wr_done && !wait_for_trig && delay_wait_done) // Delay too short
-                 || (state == S_DAC_WR && ldac_shared && !ldac) // LDAC misalignment
+                 || ((state == S_DAC_WR || state == S_DAC_WR_CH) && ldac_shared && !ldac) // LDAC misalignment
                  || (next_cmd && next_cmd_state == S_ERROR) // Bad command
                  || (((cmd_done && expect_next) || read_next_dac_val_pair) && !next_cmd_ready) // Command buffer underflow
                  || (try_data_write && data_buf_full) // Data buffer overflow
@@ -320,7 +332,7 @@ module shim_ad5676_dac_ctrl #(
   // LDAC misalignment
   always @(posedge clk) begin
     if (!resetn) ldac_misalign <= 1'b0;
-    else if (state == S_DAC_WR && ldac_shared && !ldac) ldac_misalign <= 1'b1; // LDAC misalignment if LDAC is shared and another controller is writing to DAC
+    else if ((state == S_DAC_WR || state == S_DAC_WR_CH) && ldac_shared && !ldac) ldac_misalign <= 1'b1; // LDAC misalignment if LDAC is shared and another controller is writing to DAC
   end
   // Bad command
   always @(posedge clk) begin
@@ -338,15 +350,15 @@ module shim_ad5676_dac_ctrl #(
     else if (try_data_write && data_buf_full) data_buf_overflow <= 1'b1;
   end
   // DAC val out of bounds
+  assign first_dac_val_cal_signed_oob = (first_dac_val_cal_signed < -16'sd32767 || first_dac_val_cal_signed > 16'sd32767);
+  assign second_dac_val_cal_signed_oob = (second_dac_val_cal_signed < -16'sd32767 || second_dac_val_cal_signed > 16'sd32767);
   always @(posedge clk) begin
     if (!resetn) dac_val_oob <= 1'b0; // Reset out of bounds flag on reset
     else begin // Set out of bounds flag if either of the following conditions are met:
       if (dac_load_stage == DAC_LOAD_STAGE_INIT
           && read_next_dac_val_pair && next_cmd_ready 
           && (cmd_word[15:0] == 16'hFFFF || cmd_word[31:16] == 16'hFFFF)) dac_val_oob <= 1'b1; // If incoming DAC value is 0xFFFF
-      else if (dac_load_stage == DAC_LOAD_STAGE_CONV && 
-               (first_dac_val_cal_signed < -16'sd32767 || first_dac_val_cal_signed > 16'sd32767 ||
-                second_dac_val_cal_signed < -16'sd32767 || second_dac_val_cal_signed > 16'sd32767)) dac_val_oob <= 1'b1; // If calibrated DAC value is out of bounds
+      else if (dac_load_stage == DAC_LOAD_STAGE_CONV && (first_dac_val_cal_signed_oob || second_dac_val_cal_signed_oob)) dac_val_oob <= 1'b1; // If calibrated DAC value is out of bounds
     end
   end
 
@@ -399,6 +411,7 @@ module shim_ad5676_dac_ctrl #(
   assign last_dac_channel = (dac_channel == 3'd7); // Last channel is when all bits are set
   assign second_dac_channel_of_pair = (dac_channel[0] == 1'b1); // Even channel is when the least significant bit is set (off by 1)
   assign dac_spi_cmd_done = ((state == S_DAC_WR)
+                             || (state == S_DAC_WR_CH)
                              || (state == S_TEST_WR)
                              || (state == S_REQ_RD)
                              || (state == S_TEST_RD))
@@ -420,12 +433,14 @@ module shim_ad5676_dac_ctrl #(
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) dac_wr_done <= 1'b0;
     else if (state == S_DAC_WR && dac_spi_cmd_done && last_dac_channel) dac_wr_done <= 1'b1; // Ready when all channels are written
+    else if (state == S_DAC_WR_CH && dac_spi_cmd_done) dac_wr_done <= 1'b1; // Ready when single channel is written
     else dac_wr_done <= 1'b0; // Not ready otherwise
   end
   // DAC channel index
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) dac_channel <= 3'd0;
     else if (next_cmd && command == CMD_DAC_WR) dac_channel <= 3'd0;
+    else if (next_cmd && command == CMD_DAC_WR_CH) dac_channel <= cmd_word[18:16]; // Set channel from command word for single-channel write
     else if (state == S_DAC_WR && dac_spi_cmd_done) dac_channel <= dac_channel + 1; // Increment channel when timer is done
   end
   // DAC value loading
@@ -447,6 +462,7 @@ module shim_ad5676_dac_ctrl #(
     end else 
       case (dac_load_stage)
         DAC_LOAD_STAGE_INIT: begin // Initial stage, waiting for the first DAC value to be loaded
+          // Load DAC values in pairs when doing a full 8-channel write
           if (read_next_dac_val_pair && next_cmd_ready) begin
             // Reject DAC value of 0xFFFF
             if (!(cmd_word[15:0] == 16'hFFFF || cmd_word[31:16] == 16'hFFFF))  begin
@@ -454,13 +470,25 @@ module shim_ad5676_dac_ctrl #(
               second_dac_val_signed <= offset_to_signed(cmd_word[31:16]); // Load second DAC value from command word
               dac_load_stage <= DAC_LOAD_STAGE_CAL; // Move to next stage
             end
+          // Load a single value from the command word for single-channel write
+          end else if (next_cmd && command == CMD_DAC_WR_CH) begin
+            // Reject DAC value of 0xFFFF
+            if (cmd_word[15:0] != 16'hFFFF) begin
+              first_dac_val_signed <= offset_to_signed(cmd_word[15:0]); // Load DAC value from command word
+              second_dac_val_signed <= 16'd0; // No second DAC value
+              dac_load_stage <= DAC_LOAD_STAGE_CAL; // Move to next stage
+            end
           end
         end
         DAC_LOAD_STAGE_CAL: begin // Second stage, adding calibration and getting absolute values
+          // For single-channel write, only handle the one channel
           first_dac_val_cal_signed <= first_dac_val_signed + cal_val[dac_channel]; // Add calibration to first DAC value
-          second_dac_val_cal_signed <= second_dac_val_signed + cal_val[dac_channel+1]; // Add calibration to second DAC value
           abs_dac_val[dac_channel] <= signed_to_abs(first_dac_val_cal_signed); // Convert first DAC value to absolute
-          abs_dac_val[dac_channel + 1] <= signed_to_abs(second_dac_val_cal_signed); // Convert second DAC value to absolute
+          // For full 8-channel write, handle both channels of the pair
+          if (state == S_DAC_WR) begin
+            second_dac_val_cal_signed <= second_dac_val_signed + cal_val[dac_channel+1]; // Add calibration to second DAC value
+            abs_dac_val[dac_channel + 1] <= signed_to_abs(second_dac_val_cal_signed); // Convert second DAC value to absolute
+          end
           dac_load_stage <= DAC_LOAD_STAGE_CONV; // Move to final stage
         end
         DAC_LOAD_STAGE_CONV: begin // Final conversion stage, converting to offset representation
@@ -474,7 +502,8 @@ module shim_ad5676_dac_ctrl #(
 
   //// ---- SPI MOSI control
   // Start the next SPI command
-  assign start_spi_cmd = (next_cmd && command == CMD_DAC_WR) 
+  assign start_spi_cmd =  (next_cmd && command == CMD_DAC_WR)
+                          || (next_cmd && command == CMD_DAC_WR_CH)
                           || (state == S_INIT)
                           || (state == S_TEST_WR && dac_spi_cmd_done)
                           || (state == S_REQ_RD && dac_spi_cmd_done)
@@ -524,6 +553,8 @@ module shim_ad5676_dac_ctrl #(
     end else if (state == S_DAC_WR && dac_load_stage == DAC_LOAD_STAGE_CONV) begin
       mosi_shift_reg <= {spi_write_cmd(dac_channel, signed_to_offset(first_dac_val_cal_signed)), 
                         spi_write_cmd(dac_channel + 1, signed_to_offset(second_dac_val_cal_signed))};
+    end else if (state == S_DAC_WR_CH && dac_load_stage == DAC_LOAD_STAGE_CONV) begin
+      mosi_shift_reg <= {spi_write_cmd(dac_channel, signed_to_offset(first_dac_val_cal_signed)), 24'h000000};
     // Shift once more when transitioning between words (when shift register is loaded with two 24-bit words)
     end else if (running_spi_bit) begin 
        mosi_shift_reg <= {mosi_shift_reg[46:0], 1'b0};

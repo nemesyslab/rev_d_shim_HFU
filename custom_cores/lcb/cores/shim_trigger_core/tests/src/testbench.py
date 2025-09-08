@@ -36,22 +36,23 @@ async def test_set_lockout_cmd(dut):
     # Actual Reset
     await tb.reset()
 
+    cmd_list = []
+
     # Command to set lockout with a valid value
-    cmd_type = 2
-    lock_out_value1 = tb.TRIGGER_LOCKOUT_MIN
-    cmd_word1 = (cmd_type << 29) | (lock_out_value1 & 0x1FFFFFFF)
+    cmd_list.append(tb.command_word_generator(2, tb.TRIGGER_LOCKOUT_MIN))
 
     # Command to set lockout with an invalid value
-    lock_out_value2 = tb.TRIGGER_LOCKOUT_MIN - 1
-    cmd_word2 = (cmd_type << 29) | (lock_out_value2 & 0x1FFFFFFF)
-
-    cmd_list = [cmd_word1, cmd_word2]
+    cmd_list.append(tb.command_word_generator(2, tb.TRIGGER_LOCKOUT_MIN -1))
 
     # Start the command buffer model
     await RisingEdge(dut.clk)
-    cmd_buf_task = cocotb.start_soon(tb.command_buf_model(cmd_list))
+    cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+
+    # Start the scoreboard to monitor command execution
     scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
-    await cmd_buf_task
+
+    # Send the commands to the command buffer
+    await tb.send_commands(cmd_list)
     await scoreboard_executing_cmd_task
 
     # Give time before ending the test and ensure we don't collide with other tests
@@ -79,18 +80,20 @@ async def test_sync_ch_cmd(dut):
     # Actual Reset
     await tb.reset()
 
+    cmd_list = []
     # Command to sync channels
-    cmd_type = 1
-    cmd_word = (cmd_type << 29)
-
-    cmd_list = [cmd_word]
+    cmd_list.append(tb.command_word_generator(1, 0))
 
     # Start the command buffer model
     await RisingEdge(dut.clk)
-    cmd_buf_task = cocotb.start_soon(tb.command_buf_model(cmd_list))
+    cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+
+    # Start the scoreboard to monitor command execution
     scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
-    await cmd_buf_task
-    
+
+    # Send the commands to the command buffer
+    await tb.send_commands(cmd_list)
+
     # Drive dac and adc waiting signals to all 1 to allow SYNC_CH to complete after some time
     for _ in range(20):
         await RisingEdge(dut.clk)
@@ -124,29 +127,77 @@ async def test_expect_ext_trig_cmd(dut):
     # Actual Reset
     await tb.reset()
     
+    cmd_list = []
+
     # Command to set trig_lockout with a valid value
-    cmd_type = 2
-    lock_out_value = tb.TRIGGER_LOCKOUT_MIN + 5
-    cmd_word = (cmd_type << 29) | (lock_out_value & 0x1FFFFFFF)
-    cmd_list = [cmd_word]
+    cmd_list.append(tb.command_word_generator(2, tb.TRIGGER_LOCKOUT_MIN + 5))
 
     # Command to expect external trigger
-    cmd_type = 3
-    num_external_triggers = 5
-    cmd_word = (cmd_type << 29) | (num_external_triggers & 0x1FFFFFFF)
-    cmd_list.append(cmd_word)
+    cmd_list.append(tb.command_word_generator(3, 5))
+
+    # Another expect external trigger command to test multiple in a row
+    cmd_list.append(tb.command_word_generator(3, 3))
 
     # Start the command buffer model
     await RisingEdge(dut.clk)
-    cmd_buf_task = cocotb.start_soon(tb.command_buf_model(cmd_list))
+    cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+
+    # Start the scoreboard to monitor command execution
     scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
-    await cmd_buf_task
+
+    # Send the commands to the command buffer
+    await tb.send_commands(cmd_list)
 
     # Drive external trigger signal after some time
     for _ in range(10):
         await RisingEdge(dut.clk)
 
     tb.dut.ext_trig.value = 1
+
+    await scoreboard_executing_cmd_task
+
+    # Give time before ending the test and ensure we don't collide with other tests
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    cmd_buf_task.kill()
+    monitor_cmd_done_task.kill()
+    monitor_state_transitions_task.kill()
+    scoreboard_executing_cmd_task.kill()
+
+@cocotb.test()
+async def test_delay_cmd(dut):
+    tb = await setup_testbench(dut)
+    tb.dut._log.info("STARTING TEST: test_delay_cmd")
+
+    # First have the DUT at a known state
+    await tb.reset()
+
+    # Start monitor_cmd_done and monitor_state_transitions tasks
+    monitor_cmd_done_task = cocotb.start_soon(tb.monitor_cmd_done())
+    monitor_state_transitions_task = cocotb.start_soon(tb.monitor_state_transitions())
+
+    # Actual Reset
+    await tb.reset()
+
+    cmd_list = []
+
+    # Set delay to 20 clock cycles
+    cmd_list.append(tb.command_word_generator(4, 20))
+
+    # Set delay to 10 clock cycles (edge case)
+    cmd_list.append(tb.command_word_generator(4, 10))
+
+    # Start the command buffer model
+    await RisingEdge(dut.clk)
+    cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+
+    # Start the scoreboard to monitor command execution
+    scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
+
+    # Send the commands to the command buffer
+    await tb.send_commands(cmd_list)
 
     await scoreboard_executing_cmd_task
 

@@ -59,5 +59,5 @@ class fwft_fifo_model:
             cmd = self.fifo[0]
             return cmd
         else:
-            self.dut._log.warning("name: Attempted to peek item but FIFO is empty")
+            self.dut._log.warning(f"{self.name}: Attempted to peek item but FIFO is empty")
             return None

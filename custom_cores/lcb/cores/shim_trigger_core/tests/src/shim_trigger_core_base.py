@@ -105,9 +105,9 @@ class shim_trigger_core_base:
                     f"cmd_done should be asserted when state is S_IDLE and cmd_buf_empty is 0, but got {int(self.dut.cmd_done.value)}"
             
             # S_SYNC_CH
-            if int(self.dut.state.value) != 2 and int(self.dut.all_waiting.value) == 1:
+            if int(self.dut.state.value) == 2 and int(self.dut.all_waiting.value) == 1:
                 assert int(self.dut.cmd_done.value) == 1, \
-                    f"cmd_done should be asserted when state is not S_SYNC_CH and all_waiting is 1, but got {int(self.dut.cmd_done.value)}"
+                    f"cmd_done should be asserted when state is S_SYNC_CH and all_waiting is 1, but got {int(self.dut.cmd_done.value)}"
                 
             # S_EXPECT_TRIG
             if int(self.dut.state.value) == 3 and int(self.dut.trig_counter.value) == 0:
@@ -192,32 +192,37 @@ class shim_trigger_core_base:
             else:
                 assert int(self.dut.next_cmd_state.value) == 5, \
                     f"next_cmd_state should be S_ERROR for invalid cmd_type, but got {self.get_state_name(int(self.dut.next_cmd_state.value))}"
-                
-    async def command_buf_model(self, cmd_list):
+    
+    async def send_commands(self, cmd_list):
+        """
+        Send a list of commands to the DUT via the command buffer model.
+        """
+        self.dut._log.info(f"Sending {len(cmd_list)} commands to command buffer")
+
+        for cmd in cmd_list:
+            await RisingEdge(self.dut.clk)
+            self.cmd_buf.write_item(cmd)
+
+        self.dut._log.info(f"All {len(cmd_list)} commands sent to command buffer")
+
+    async def command_buf_model(self):
         """
         Model of the command buffer. Connected to DUT's cmd_word_rd_en, cmd_word, and cmd_buf_empty.
-        Takes a N sized list of commands to write to the buffer.
         The DUT will read commands from this buffer.
         """
-        N = len(cmd_list)
-        self.dut._log.info(f"Starting command buffer model with {N} commands")
-
-        for i in range(N):
+        while True:
             await RisingEdge(self.dut.clk)
-            # Buffer writes
-            cmd = cmd_list[i]
-            self.cmd_buf.write_item(cmd)
 
             # Update Buffer status signals
             self.dut.cmd_buf_empty.value = 1 if self.cmd_buf.is_empty() else 0
 
             # FWFT behavior: always present the next item on cmd_word
-            fwft_data = self.cmd_buf.peek_item()
+            fwft_data = self.cmd_buf.peek_item() if not self.cmd_buf.is_empty() else None
             self.dut.cmd_word.value = fwft_data if fwft_data is not None else 0
 
             await ReadOnly() # Wait for combinational logic to settle
             # Buffer reads
-            if self.dut.cmd_word_rd_en.value == 1:
+            if self.dut.cmd_word_rd_en.value == 1 and not self.cmd_buf.is_empty():
                 self.executing_cmd_queue.append(self.cmd_buf.pop_item())
 
     def command_word_generator(self, cmd_type, cmd_value):
@@ -236,50 +241,6 @@ class shim_trigger_core_base:
         return cmd_type, cmd_value
     
     # Update all with regard to cancel command
-#    async def executing_command_scoreboard(self, num_of_commands=0):
-#        """
-#        Scoreboard to keep track of the currently executing command in the DUT.
-#        This is used to verify that the DUT is executing the correct command.
-#        """
-#        command_i = 0
-#        self.dut._log.info(f"Starting executing command scoreboard with {num_of_commands} commands")
-#        while True:
-#            await RisingEdge(self.dut.clk)
-#            await ReadOnly()
-#
-#            if len(self.executing_cmd_queue) > 0:
-#                executing_cmd = self.executing_cmd_queue.popleft()
-#                cmd_type, cmd_value = self.command_word_decoder(executing_cmd)
-#
-#
-#                dut_cmd_type = int(self.dut.cmd_type.value)
-#                dut_cmd_val = int(self.dut.cmd_val.value)
-#
-#                assert cmd_type == dut_cmd_type, \
-#                    f"Executing command type mismatch: expected {self.get_cmd_name(cmd_type)} but got {self.get_cmd_name(dut_cmd_type)}"
-#                assert cmd_value == dut_cmd_val, \
-#                    f"Executing command value mismatch: expected {cmd_value} but got {dut_cmd_val}"
-#                
-#                # Fork scoreboard for the specific command type
-#                if cmd_type == 1:
-#                    cocotb.start_soon(self.cmd_sync_ch_scoreboard(cmd_value, command_i))
-#                elif cmd_type == 2:
-#                    cocotb.start_soon(self.cmd_set_lockout_scoreboard(cmd_value, command_i))
-#                elif cmd_type == 3:
-#                    cocotb.start_soon(self.cmd_expect_ext_trig_scoreboard(cmd_value, command_i))
-#                elif cmd_type == 4:
-#                    cocotb.start_soon(self.cmd_delay_scoreboard(cmd_value, command_i))
-#                elif cmd_type == 5:
-#                    cocotb.start_soon(self.cmd_force_trig_scoreboard(cmd_value, command_i))
-#                elif cmd_type == 7:
-#                    cocotb.start_soon(self.cmd_cancel_scoreboard(cmd_value, command_i))
-#                else:
-#                    pass
-#
-#            # Remove the command from the queue if cmd_done is asserted
-#            if int(self.dut.cmd_done.value) == 1:
-#                command_i = command_i + 1
-
     async def executing_command_scoreboard(self, num_of_commands=0):
         """
         Scoreboard to keep track of the currently executing command in the DUT.
@@ -295,13 +256,10 @@ class shim_trigger_core_base:
 
         # Loop until the expected number of commands have been processed
         while commands_processed < num_of_commands:
-            # This structure preserves your synchronous sampling integrity
             await RisingEdge(self.dut.clk)
             await ReadOnly()
 
-            # Check for a command exactly once per clock cycle
             if len(self.executing_cmd_queue) > 0:
-                # CRITICAL: Increment counter ONLY when a command is processed
                 commands_processed += 1
 
                 executing_cmd = self.executing_cmd_queue.popleft()
@@ -317,8 +275,8 @@ class shim_trigger_core_base:
                 
                 # Fork scoreboard for the specific command type and save the task
                 task = None
-                # Using (commands_processed - 1) to pass a 0-indexed command ID
                 command_i = commands_processed - 1
+
                 if cmd_type == 1:
                     task = cocotb.start_soon(self.cmd_sync_ch_scoreboard(cmd_value, command_i))
                 elif cmd_type == 2:
@@ -335,8 +293,7 @@ class shim_trigger_core_base:
                 if task:
                     forked_tasks.append(task)
         
-        # After the while loop, all commands have been forked.
-        # Now, wait for all forked scoreboard tasks to complete their work.
+        # Wait for all forked scoreboard tasks to complete their work.
         self.dut._log.info(f"All {num_of_commands} commands have been forked. Waiting for {len(forked_tasks)} scoreboards to complete.")
         if forked_tasks:
             await Combine(*forked_tasks)
@@ -450,7 +407,38 @@ class shim_trigger_core_base:
 
 
     async def cmd_delay_scoreboard(self, cmd_value, command_i):
-        pass
+        """ Scoreboard to verify DELAY command."""
+        self.dut._log.info(f"Verifying DELAY command for command index:{command_i} with value {cmd_value}")
+
+        expected_delay_counter = cmd_value if cmd_value != 0 else int(self.dut.delay_counter.value)
+
+        # Wait one clock cycle for the delay_counter to be updated
+        await RisingEdge(self.dut.clk)
+        await ReadOnly()
+        self.dut._log.info(f"For command index:{command_i} Expected delay_counter: {expected_delay_counter}, DUT delay_counter: {int(self.dut.delay_counter.value)}")
+        assert int(self.dut.delay_counter.value) == expected_delay_counter, \
+            f"For command index:{command_i} Delay counter mismatch: expected {expected_delay_counter} but got {int(self.dut.delay_counter.value)}"
+        
+        while True:
+            await RisingEdge(self.dut.clk)
+            await ReadOnly()
+
+            # Assert that we are still in DELAY state
+            assert int(self.dut.state.value) == 4, \
+                f"For command index:{command_i} State should be S_DELAY, but got {self.get_state_name(int(self.dut.state.value))}"
+            
+            if expected_delay_counter > 0:
+                expected_delay_counter -= 1
+                self.dut._log.info(f"For command index:{command_i} Expected delay_counter decremented to: {expected_delay_counter}")
+                assert int(self.dut.delay_counter.value) == expected_delay_counter, \
+                    f"For command index:{command_i} Delay counter mismatch: expected {expected_delay_counter} but got {int(self.dut.delay_counter.value)}"
+            
+            if expected_delay_counter == 0:
+                assert int(self.dut.delay_counter.value) == 0, \
+                    f"For command index:{command_i} Delay counter should be 0 after countdown, but got {int(self.dut.delay_counter.value)}"
+                self.dut._log.info(f"For command index:{command_i} Delay countdown complete.")
+                break
+
     async def cmd_force_trig_scoreboard(self, cmd_value, command_i):
         pass
     async def cmd_cancel_scoreboard(self, cmd_value, command_i):

@@ -55,6 +55,9 @@ class shim_trigger_core_base:
         # Queue to keep track of current executing command in the DUT
         self.executing_cmd_queue = deque()
 
+        # For tracking expected trigger timing data
+        self.expected_trig_timer_list = []
+
     def get_state_name(self, state_value):
         """Get the state name from the state value."""
         state_int = int(state_value)
@@ -74,6 +77,7 @@ class shim_trigger_core_base:
         self.cmd_buf.reset()
         self.data_buf.reset()
         self.executing_cmd_queue.clear()
+        self.expected_trig_timer_list.clear()
 
         await RisingEdge(self.dut.clk)
 
@@ -315,6 +319,8 @@ class shim_trigger_core_base:
                 f"For command index:{command_i} all_waiting should be 1, but got {int(self.dut.all_waiting.value)}"
             assert int(self.dut.next_cmd_state.value) == 1, \
                 f"For command index:{command_i} next_cmd_state should be S_IDLE, but got {self.get_state_name(int(self.dut.next_cmd_state.value))}"
+            assert int(self.dut.do_trig.value) == 1, \
+                f"For command index:{command_i} when all waiting do_trig should be 1, but got {int(self.dut.do_trig.value)}"
         else:
             while True:
                 await RisingEdge(self.dut.clk)
@@ -337,6 +343,8 @@ class shim_trigger_core_base:
                         f"For command index:{command_i} all_waiting should be 1, but got {int(self.dut.all_waiting.value)}"
                     assert int(self.dut.next_cmd_state.value) == 1, \
                         f"For command index:{command_i} next_cmd_state should be S_IDLE, but got {self.get_state_name(int(self.dut.next_cmd_state.value))}"
+                    assert int(self.dut.do_trig.value) == 1, \
+                        f"For command index:{command_i} when all waiting do_trig should be 1, but got {int(self.dut.do_trig.value)}"
                     break
 
     async def cmd_set_lockout_scoreboard(self, cmd_value, command_i):
@@ -509,7 +517,7 @@ class shim_trigger_core_base:
         assert int(self.dut.state.value) == 1, \
             f"For command index:{command_i} State should be S_IDLE after CANCEL command, but got {self.get_state_name(int(self.dut.state.value))}"
 
-    async def data_fifo_model(self):
+    async def data_buf_model(self):
         """
         Model of the data FIFO. Connected to DUT's data_word_wr_en, data_word, data_buf_full, and data_buf_almost_full.
         The DUT will write Trigger timing data to this FIFO.
@@ -527,4 +535,60 @@ class shim_trigger_core_base:
             self.dut.data_buf_full.value = 1 if self.data_buf.is_full() else 0
             self.dut.data_buf_almost_full.value = 1 if self.data_buf.is_almost_full() else 0
 
+    async def trig_timer_tracker(self):
+        """ Generate the expected trigger timing data parallel to the DUT and write into self.expected_trig_timer_list."""
+        expected_trig_timer = 0
+        
+        while True:
+            await RisingEdge(self.dut.clk)
+            prev_do_trig = int(self.dut.do_trig.value)
 
+            await ReadOnly()
+            write_cond = int(self.dut.do_trig.value) == 1 and int(self.dut.data_buf_full.value) == 0 and int(self.dut.data_buf_almost_full.value) == 0
+            effectively_in_buffer = int(self.dut.trig_data_second_word.value) == 1
+
+            if prev_do_trig == 1 and expected_trig_timer == 0:
+                expected_trig_timer = 1
+            elif expected_trig_timer > 0:
+                expected_trig_timer += 1
+
+            if write_cond:
+                first_data_word = expected_trig_timer & 0xFFFFFFFF
+                second_data_word = (expected_trig_timer >> 32) & 0xFFFFFFFF
+
+            if effectively_in_buffer:   
+                self.dut._log.info(f"Expected Trigger Timing Data Generated: First Word:0x{first_data_word:08X}, Second Word:0x{second_data_word:08X}")
+                self.expected_trig_timer_list.append((first_data_word, second_data_word))
+
+    async def data_buf_scoreboard(self):
+        """
+        Each cycle read from the data buffer model and compare with expected trigger timing data.
+        Only should be started after all commands have been sent and processed.
+        """
+        self.dut._log.info("Starting data buffer scoreboard for trig_timer.")
+        num_of_data_words_checked = 0
+
+        while 2*len(self.expected_trig_timer_list) > 0 or not self.data_buf.is_empty():
+            await RisingEdge(self.dut.clk)
+            await ReadOnly()
+
+            read_data = int(self.data_buf.pop_item())
+
+            if num_of_data_words_checked % 2 == 0:
+                expected_first_word, expected_second_word = self.expected_trig_timer_list.pop(0)
+
+            if num_of_data_words_checked % 2 == 0:
+                # First word
+                assert read_data == expected_first_word, \
+                    f"Data buffer mismatch on first word: expected 0x{expected_first_word:08X} but got 0x{read_data:08X}"
+                self.dut._log.info(f"Data buffer match on first word: 0x{read_data:08X}")
+            else:
+                # Second word
+                assert read_data == expected_second_word, \
+                    f"Data buffer mismatch on second word: expected 0x{expected_second_word:08X} but got 0x{read_data:08X}"
+                self.dut._log.info(f"Data buffer match on second word: 0x{read_data:08X}")
+
+            num_of_data_words_checked += 1
+        
+
+            

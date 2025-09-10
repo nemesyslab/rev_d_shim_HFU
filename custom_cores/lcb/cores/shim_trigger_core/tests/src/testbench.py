@@ -141,9 +141,11 @@ async def test_expect_ext_trig_cmd(dut):
     # Command to set external trigger with 0 value (edge case)
     cmd_list.append(tb.command_word_generator(3, 0))
 
-    # Start the command buffer model
+    # Start the command buffer model, data buffer model and trig timer tracker
     await RisingEdge(dut.clk)
     cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+    data_buf_task = cocotb.start_soon(tb.data_buf_model())
+    trig_timer_task = cocotb.start_soon(tb.trig_timer_tracker())
 
     # Start the scoreboard to monitor command execution
     scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
@@ -159,6 +161,10 @@ async def test_expect_ext_trig_cmd(dut):
 
     await scoreboard_executing_cmd_task
 
+    # Start data buffer scoreboard to check the expected trigger timing data
+    data_buf_scoreboard_task = cocotb.start_soon(tb.data_buf_scoreboard())
+    await data_buf_scoreboard_task
+
     # Give time before ending the test and ensure we don't collide with other tests
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
@@ -168,6 +174,9 @@ async def test_expect_ext_trig_cmd(dut):
     monitor_cmd_done_task.kill()
     monitor_state_transitions_task.kill()
     scoreboard_executing_cmd_task.kill()
+    trig_timer_task.kill()
+    data_buf_task.kill()
+    data_buf_scoreboard_task.kill()
 
 @cocotb.test()
 async def test_delay_cmd(dut):

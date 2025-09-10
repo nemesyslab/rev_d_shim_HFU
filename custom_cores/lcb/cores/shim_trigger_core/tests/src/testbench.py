@@ -138,6 +138,9 @@ async def test_expect_ext_trig_cmd(dut):
     # Another expect external trigger command to test multiple in a row
     cmd_list.append(tb.command_word_generator(3, 3))
 
+    # Command to set external trigger with 0 value (edge case)
+    cmd_list.append(tb.command_word_generator(3, 0))
+
     # Start the command buffer model
     await RisingEdge(dut.clk)
     cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
@@ -188,6 +191,9 @@ async def test_delay_cmd(dut):
 
     # Set delay to 10 clock cycles (edge case)
     cmd_list.append(tb.command_word_generator(4, 10))
+
+    # Set delay to 0 clock cycles (edge case)
+    cmd_list.append(tb.command_word_generator(4, 0))
 
     # Start the command buffer model
     await RisingEdge(dut.clk)

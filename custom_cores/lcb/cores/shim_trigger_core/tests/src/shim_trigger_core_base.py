@@ -240,9 +240,6 @@ class shim_trigger_core_base:
         cmd_value = cmd_word & 0x1FFFFFFF
         return cmd_type, cmd_value
     
-    # TO DO:
-    # Update all with regard to cancel command
-    # Consider command values with 0
     async def executing_command_scoreboard(self, num_of_commands=0):
         """
         Scoreboard to keep track of the currently executing command in the DUT.
@@ -356,6 +353,12 @@ class shim_trigger_core_base:
         self.dut._log.info(f"For command index:{command_i} Expected lockout: {expected_lockout}, DUT lockout: {int(self.dut.trig_lockout.value)}")
         assert int(self.dut.trig_lockout.value) == expected_lockout, \
             f"For command index:{command_i} Trigger lockout mismatch: expected {expected_lockout} but got {int(self.dut.trig_lockout.value)}"
+        
+        if cmd_value < self.TRIGGER_LOCKOUT_MIN:
+            assert int(self.dut.state.value) == 5, \
+                f"For command index:{command_i} State should be S_ERROR for invalid lockout value, but got {self.get_state_name(int(self.dut.state.value))}"
+            assert int(self.dut.bad_cmd.value) == 1, \
+                f"For command index:{command_i} bad_cmd should be asserted for invalid lockout value, but got {int(self.dut.bad_cmd.value)}"
 
     async def cmd_expect_ext_trig_scoreboard(self, cmd_value, command_i):
         """
@@ -363,7 +366,7 @@ class shim_trigger_core_base:
         """
         self.dut._log.info(f"Verifying EXPECT_EXT_TRIG command for command index:{command_i} with value {cmd_value}")
 
-        expected_trig_counter = cmd_value if cmd_value != 0 else int(self.dut.trig_counter.value)
+        expected_trig_counter = cmd_value 
         num_of_trigs_done = 0
         num_of_expected_trigs = expected_trig_counter
 
@@ -377,6 +380,11 @@ class shim_trigger_core_base:
         # Cancel exit condition
         if int(self.dut.cancel.value) == 1:
             self.dut._log.info(f"For command index:{command_i} Command was cancelled before starting trigger countdown.")
+            return
+        elif expected_trig_counter == 0:
+            self.dut._log.info(f"For command index:{command_i} Command value is 0, no triggers expected.")
+            assert int(self.dut.state.value) == 1, \
+                f"For command index:{command_i} State should be S_IDLE for 0 trigger count, but got {self.get_state_name(int(self.dut.state.value))}"
             return
         
         while True:
@@ -428,7 +436,7 @@ class shim_trigger_core_base:
         """ Scoreboard to verify DELAY command."""
         self.dut._log.info(f"Verifying DELAY command for command index:{command_i} with value {cmd_value}")
 
-        expected_delay_counter = cmd_value if cmd_value != 0 else int(self.dut.delay_counter.value)
+        expected_delay_counter = cmd_value
 
         # Wait one clock cycle for the delay_counter to be updated
         await RisingEdge(self.dut.clk)
@@ -440,6 +448,11 @@ class shim_trigger_core_base:
         # Cancel exit condition
         if int(self.dut.cancel.value) == 1:
             self.dut._log.info(f"For command index:{command_i} Command was cancelled before starting delay countdown.")
+            return
+        elif expected_delay_counter == 0:
+            self.dut._log.info(f"For command index:{command_i} Command value is 0, no delay expected.")
+            assert int(self.dut.state.value) == 1, \
+                f"For command index:{command_i} State should be S_IDLE for 0 delay, but got {self.get_state_name(int(self.dut.state.value))}"
             return
         
         while True:

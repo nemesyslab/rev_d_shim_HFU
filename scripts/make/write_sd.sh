@@ -75,6 +75,23 @@ if [ ! -d "${MNT}/RootFS" ]; then
   exit 1
 fi
 
+BOOT_DEV=$(df "${MNT}/BOOT" | tail -1 | awk '{print $1}')
+ROOTFS_DEV=$(df "${MNT}/RootFS" | tail -1 | awk '{print $1}')
+
+BOOT_BASE=$(echo "$BOOT_DEV" | sed 's/[0-9]*$//')
+ROOTFS_BASE=$(echo "$ROOTFS_DEV" | sed 's/[0-9]*$//')
+
+if [ "$BOOT_BASE" == "$ROOTFS_BASE" ]; then
+  echo "[WRITE SD] Detected SD card device: $BOOT_BASE"
+else
+  echo "[WRITE SD] ERROR:"
+  echo "BOOT and RootFS are on different devices:"
+  echo " BOOT: $BOOT_DEV (base: $BOOT_BASE)"
+  echo " RootFS: $ROOTFS_DEV (base: $ROOTFS_BASE)"
+  echo "Ensure the SD card is partitioned and mounted correctly."
+  exit 1
+fi
+
 if [ $CLEAN -eq 1 ]; then
   echo "[WRITE SD] --clean flag detected, running clean_sd.sh..."
   SCRIPT_DIR="$(dirname "$0")"
@@ -86,3 +103,10 @@ sudo tar -xzf out/${BRD}/${VER}/${PRJ}/BOOT.tar.gz -C ${MNT}/BOOT
 
 echo "[WRITE SD] Unpacking RootFS image for ${PBV} to ${MNT}/RootFS (needs sudo)"
 sudo tar -xzf out/${BRD}/${VER}/${PRJ}/rootfs.tar.gz -C ${MNT}/RootFS
+
+echo "[WRITE SD] Unmounting ${MNT}/BOOT and ${MNT}/RootFS..."
+sudo umount "${MNT}/BOOT"
+sudo umount "${MNT}/RootFS"
+echo "[WRITE SD] Ejecting device $BOOT_BASE..."
+sudo eject "$BOOT_BASE"
+echo "[WRITE SD] SD card write complete for ${PBV}."

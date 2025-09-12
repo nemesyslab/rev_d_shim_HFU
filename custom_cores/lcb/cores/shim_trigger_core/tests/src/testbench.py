@@ -1,6 +1,7 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, ReadOnly, ReadWrite
+import random
 
 from shim_trigger_core_base import shim_trigger_core_base
 
@@ -354,3 +355,169 @@ async def test_cancel_cmd(dut):
     trig_timer_task.kill()
     data_buf_task.kill()
     data_buf_scoreboard_task.kill()
+
+
+@cocotb.test()
+async def test_unexpected_cmd(dut):
+    tb = await setup_testbench(dut)
+    tb.dut._log.info("STARTING TEST: test_unexpected_cmd")
+
+    # First have the DUT at a known state
+    await tb.reset()
+
+    # Start monitor_cmd_done and monitor_state_transitions tasks
+    monitor_cmd_done_task = cocotb.start_soon(tb.monitor_cmd_done())
+    monitor_state_transitions_task = cocotb.start_soon(tb.monitor_state_transitions())
+
+    # Actual Reset
+    await tb.reset()
+
+    cmd_list = []
+
+    # Command with an unexpected command type (e.g., 6)
+    cmd_list.append(tb.command_word_generator(6, 0x1234567))
+
+    # Start the command buffer model, data buffer model and trig timer tracker
+    await RisingEdge(dut.clk)
+    cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+    data_buf_task = cocotb.start_soon(tb.data_buf_model())
+    trig_timer_task = cocotb.start_soon(tb.trig_timer_tracker())
+
+    # Start the scoreboard to monitor command execution
+    scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
+
+    # Send the commands to the command buffer
+    await tb.send_commands(cmd_list)
+
+    await scoreboard_executing_cmd_task
+
+    # Start data buffer scoreboard to check the expected trigger timing data
+    data_buf_scoreboard_task = cocotb.start_soon(tb.data_buf_scoreboard())
+    await data_buf_scoreboard_task
+
+    # Give time before ending the test and ensure we don't collide with other tests
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    cmd_buf_task.kill()
+    monitor_cmd_done_task.kill()
+    monitor_state_transitions_task.kill()
+    scoreboard_executing_cmd_task.kill()
+    trig_timer_task.kill()
+    data_buf_task.kill()
+    data_buf_scoreboard_task.kill()
+
+@cocotb.test(skip=True)
+async def test_back_to_back_force_trig_cmd(dut):
+    tb = await setup_testbench(dut)
+    tb.dut._log.info("STARTING TEST: test_back_to_back_force_trig_cmd")
+
+    # First have the DUT at a known state
+    await tb.reset()
+
+    # Start monitor_cmd_done and monitor_state_transitions tasks
+    monitor_cmd_done_task = cocotb.start_soon(tb.monitor_cmd_done())
+    monitor_state_transitions_task = cocotb.start_soon(tb.monitor_state_transitions())
+
+    # Actual Reset
+    await tb.reset()
+
+    cmd_list = []
+    
+    for _i in range(100):
+        # Command to force trigger
+        cmd_list.append(tb.command_word_generator(5, 0))
+
+    # Start the command buffer model, data buffer model and trig timer tracker
+    await RisingEdge(dut.clk)
+    cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+    data_buf_task = cocotb.start_soon(tb.data_buf_model())
+    trig_timer_task = cocotb.start_soon(tb.trig_timer_tracker())
+
+    # Start the scoreboard to monitor command execution
+    scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
+
+    # Send the commands to the command buffer
+    await tb.send_commands(cmd_list)
+
+    await scoreboard_executing_cmd_task
+
+    # Start data buffer scoreboard to check the expected trigger timing data
+    data_buf_scoreboard_task = cocotb.start_soon(tb.data_buf_scoreboard())
+    await data_buf_scoreboard_task
+
+    # Give time before ending the test and ensure we don't collide with other tests
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)
+    cmd_buf_task.kill()
+    monitor_cmd_done_task.kill()
+    monitor_state_transitions_task.kill()
+    scoreboard_executing_cmd_task.kill()
+    trig_timer_task.kill()
+    data_buf_task.kill()
+    data_buf_scoreboard_task.kill()
+
+@cocotb.test()
+async def test_random_cmd_sequence(dut):
+    seed = 1234
+    random.seed(seed)
+    dut._log.info(f"Random seed: {seed}")
+
+    for i in range(10):
+        tb = await setup_testbench(dut)
+        tb.dut._log.info(f"STARTING TEST: test_random_cmd_sequence ITERATION: {i+1}")
+
+        # First have the DUT at a known state
+        await tb.reset()
+
+        # Start monitor_cmd_done and monitor_state_transitions tasks
+        monitor_cmd_done_task = cocotb.start_soon(tb.monitor_cmd_done())
+        monitor_state_transitions_task = cocotb.start_soon(tb.monitor_state_transitions())
+
+        # Actual Reset
+        await tb.reset()
+
+        # Generate a random sequence of 50 commands
+        cmd_list = tb.random_command_word_generator(50)
+
+        # Start the command buffer model, data buffer model and trig timer tracker
+        await RisingEdge(dut.clk)
+        cmd_buf_task = cocotb.start_soon(tb.command_buf_model())
+        data_buf_task = cocotb.start_soon(tb.data_buf_model())
+        trig_timer_task = cocotb.start_soon(tb.trig_timer_tracker())
+
+        # Randomly drive external trigger and dac/adc waiting signals during the test
+        waiting_for_trig_task = cocotb.start_soon(tb.random_waiting_for_trig_driver())
+
+        # Randomly drive ext_trig signal during the test
+        ext_trig_task = cocotb.start_soon(tb.random_ext_trig_driver())
+
+        # Start the scoreboard to monitor command execution
+        scoreboard_executing_cmd_task = cocotb.start_soon(tb.executing_command_scoreboard(len(cmd_list)))
+
+        # Send the commands to the command buffer
+        await tb.send_commands(cmd_list)
+
+        await scoreboard_executing_cmd_task
+
+        # Start data buffer scoreboard to check the expected trigger timing data
+        data_buf_scoreboard_task = cocotb.start_soon(tb.data_buf_scoreboard())
+        await data_buf_scoreboard_task
+
+        # Give time before ending the test and ensure we don't collide with other tests
+        await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
+        await RisingEdge(dut.clk)
+        cmd_buf_task.kill()
+        monitor_cmd_done_task.kill()
+        monitor_state_transitions_task.kill()
+        scoreboard_executing_cmd_task.kill()
+        trig_timer_task.kill()
+        data_buf_task.kill()
+        data_buf_scoreboard_task.kill()
+        waiting_for_trig_task.kill()
+        ext_trig_task.kill()

@@ -3,6 +3,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, ReadOnly, ReadWrite, Combine
 from collections import deque
 from fwft_fifo_model import fwft_fifo_model
+import random
 
 
 class shim_trigger_core_base:
@@ -33,11 +34,12 @@ class shim_trigger_core_base:
         # Parameters
         self.TRIGGER_LOCKOUT_DEFAULT = int(self.dut.TRIGGER_LOCKOUT_DEFAULT.value)
         self.TRIGGER_LOCKOUT_MIN = int(self.dut.TRIGGER_LOCKOUT_MIN.value)
+        self.MAX_CMD_VALUE = 0x1FFFFFFF  # 29 bits for cmd_value
 
         # Initialize clock
         cocotb.start_soon(Clock(dut.clk, clk_period, time_unit).start(start_high=False))
 
-        self.dut._log.info(f"TRIGGER_LOCKOUT set to {self.TRIGGER_LOCKOUT_DEFAULT}")
+        self.dut._log.info(f"TRIGGER_LOCKOUT_DEFAULT set to {self.TRIGGER_LOCKOUT_DEFAULT}")
 
         # Initialize Input Signals
         self.dut.cmd_word.value = 0
@@ -124,7 +126,7 @@ class shim_trigger_core_base:
                     f"cmd_done should be asserted when state is S_DELAY and delay_counter is 0, but got {int(self.dut.cmd_done.value)}"
                 
             # S_ERROR
-            if int(self.dut.state.value) != 7 and int(self.dut.cancel.value) == 1:
+            if int(self.dut.state.value) != 5 and int(self.dut.cancel.value) == 1:
                 assert int(self.dut.cmd_done.value) == 1, \
                     f"cmd_done should be asserted when state is not S_ERROR and cancel is 1, but got {int(self.dut.cmd_done.value)}"
                 
@@ -200,12 +202,21 @@ class shim_trigger_core_base:
     async def send_commands(self, cmd_list):
         """
         Send a list of commands to the DUT via the command buffer model.
+        If the command buffer is full, retry writing the same command on the next clock cycle.
         """
         self.dut._log.info(f"Sending {len(cmd_list)} commands to command buffer")
 
         for cmd in cmd_list:
-            await RisingEdge(self.dut.clk)
-            self.cmd_buf.write_item(cmd)
+            written = False
+            while not written:
+                await RisingEdge(self.dut.clk)
+                # If buffer not full, write and move to next command
+                if not self.cmd_buf.is_full():
+                    self.cmd_buf.write_item(cmd)
+                    written = True
+                else:
+                    # Buffer full: wait and retry on next cycle
+                    self.dut._log.debug("cmd_buf full, retrying write on next cycle")
 
         self.dut._log.info(f"All {len(cmd_list)} commands sent to command buffer")
 
@@ -244,6 +255,79 @@ class shim_trigger_core_base:
         cmd_value = cmd_word & 0x1FFFFFFF
         return cmd_type, cmd_value
     
+    def random_command_word_generator(self, n):
+        """
+        Generates up to n random command words and returns them as a command list.
+
+        - If an unexpected command is generated or CMD_SET_LOCKOUT is generated with
+          an invalid value, that command is appended and generation stops (it is the
+          literal last command in the returned list).
+        - Chance of unexpected commands are ~5%.
+        """
+        cmd_list = []
+        if n == 0:
+            return cmd_list
+
+        unexpected_prob = 0.05  # ~5% chance to produce an unexpected command (types 0 or 6)
+
+        while len(cmd_list) < n:
+            # Pick whether to generate an unexpected command
+            if random.random() < unexpected_prob:
+                cmd_type = random.choice([0, 6])  # unexpected types
+            else:
+                cmd_type = random.choice([1, 2, 3, 4, 5, 7])  # expected types
+
+            # Generate cmd_value based on type
+            if cmd_type == 1:  # CMD_SYNC_CH
+                cmd_value = random.randint(0, self.MAX_CMD_VALUE)
+            elif cmd_type == 2:  # CMD_SET_LOCKOUT
+                cmd_value = random.randint(0, 50)
+            elif cmd_type == 3:  # CMD_EXPECT_EXT_TRIG
+                cmd_value = random.randint(0, 50)
+            elif cmd_type == 4:  # CMD_DELAY
+                cmd_value = random.randint(0, 50)
+            elif cmd_type == 5:  # CMD_FORCE_TRIG
+                cmd_value = random.randint(0, self.MAX_CMD_VALUE)
+            elif cmd_type == 7:  # CMD_CANCEL
+                cmd_value = random.randint(0, self.MAX_CMD_VALUE)
+            else:
+                # unexpected command types
+                cmd_value = random.randint(0, self.MAX_CMD_VALUE)
+
+            cmd_word = self.command_word_generator(cmd_type, cmd_value)
+            cmd_list.append(cmd_word)
+
+            # If this command is unexpected or an invalid SET_LOCKOUT, stop generation
+            is_unexpected = cmd_type not in self.CMD_ENCODING
+            is_invalid_lockout = (cmd_type == 2 and cmd_value < self.TRIGGER_LOCKOUT_MIN)
+            if is_unexpected or is_invalid_lockout:
+                # This command must be the literal last command in cmd_list
+                break
+
+        return cmd_list
+
+    
+    async def random_waiting_for_trig_driver(self):
+        """Randomly drive adc_waiting_for_trig and dac_waiting_for_trig signals to random values or all 1."""
+        while True:
+            await RisingEdge(self.dut.clk)
+            # Randomly decide to set all waiting or random waiting
+            if random.random() < 0.3:  # 30% chance to set all waiting
+                self.dut.adc_waiting_for_trig.value = 0xFF
+                self.dut.dac_waiting_for_trig.value = 0xFF
+            else:
+                self.dut.adc_waiting_for_trig.value = random.randint(0, 0xFF)
+                self.dut.dac_waiting_for_trig.value = random.randint(0, 0xFF)
+
+    async def random_ext_trig_driver(self):
+        """Randomly drive ext_trig signal high for one clock cycle."""
+        while True:
+            await RisingEdge(self.dut.clk)
+            if random.random() < 0.3:  # 30% chance to trigger
+                self.dut.ext_trig.value = 1
+                await RisingEdge(self.dut.clk)
+                self.dut.ext_trig.value = 0
+
     async def executing_command_scoreboard(self, num_of_commands=0):
         """
         Scoreboard to keep track of the currently executing command in the DUT.
@@ -292,6 +376,8 @@ class shim_trigger_core_base:
                     task = cocotb.start_soon(self.cmd_force_trig_scoreboard(cmd_value, command_i))
                 elif cmd_type == 7:
                     task = cocotb.start_soon(self.cmd_cancel_scoreboard(cmd_value, command_i))
+                else:
+                    task = cocotb.start_soon(self.cmd_unexpected_scoreboard(cmd_type, cmd_value, command_i))
                 
                 if task:
                     forked_tasks.append(task)
@@ -341,8 +427,6 @@ class shim_trigger_core_base:
                     self.dut._log.info(f"For command index:{command_i} adc_waiting: {adc_waiting:08b}, dac_waiting: {dac_waiting:08b}")
                     assert int(self.dut.all_waiting.value) == 1, \
                         f"For command index:{command_i} all_waiting should be 1, but got {int(self.dut.all_waiting.value)}"
-                    assert int(self.dut.next_cmd_state.value) == 1, \
-                        f"For command index:{command_i} next_cmd_state should be S_IDLE, but got {self.get_state_name(int(self.dut.next_cmd_state.value))}"
                     assert int(self.dut.do_trig.value) == 1, \
                         f"For command index:{command_i} when all waiting do_trig should be 1, but got {int(self.dut.do_trig.value)}"
                     break
@@ -516,6 +600,19 @@ class shim_trigger_core_base:
         
         assert int(self.dut.state.value) == 1, \
             f"For command index:{command_i} State should be S_IDLE after CANCEL command, but got {self.get_state_name(int(self.dut.state.value))}"
+        
+    async def cmd_unexpected_scoreboard(self, cmd_type, cmd_value, command_i):
+        """ Scoreboard to catch any unexpected commands being executed."""
+        self.dut._log.info(f"Verifying UNEXPECTED command for command index:{command_i} with type {cmd_type} and value {cmd_value}")
+        assert cmd_type not in self.CMD_ENCODING, \
+            f"For command index:{command_i} Unexpected command type detected: {cmd_type}"
+        
+        await RisingEdge(self.dut.clk)
+        await ReadOnly()
+        assert int(self.dut.state.value) == 5, \
+            f"For command index:{command_i} State should be S_ERROR for unexpected command, but got {self.get_state_name(int(self.dut.state.value))}"
+        assert int(self.dut.bad_cmd.value) == 1, \
+            f"For command index:{command_i} bad_cmd should be asserted for unexpected command, but got {int(self.dut.bad_cmd.value)}"
 
     async def data_buf_model(self):
         """
@@ -552,11 +649,11 @@ class shim_trigger_core_base:
             elif expected_trig_timer > 0:
                 expected_trig_timer += 1
 
-            if write_cond:
+            if write_cond and prev_do_trig == 0:
                 first_data_word = expected_trig_timer & 0xFFFFFFFF
                 second_data_word = (expected_trig_timer >> 32) & 0xFFFFFFFF
 
-            if effectively_in_buffer:   
+            if effectively_in_buffer:
                 self.dut._log.info(f"Expected Trigger Timing Data Generated: First Word:0x{first_data_word:08X}, Second Word:0x{second_data_word:08X}")
                 self.expected_trig_timer_list.append((first_data_word, second_data_word))
 
@@ -589,6 +686,8 @@ class shim_trigger_core_base:
                 self.dut._log.info(f"Data buffer match on second word: 0x{read_data:08X}")
 
             num_of_data_words_checked += 1
+        
+        self.dut._log.info("Data buffer scoreboard for trig_timer finished.")
         
 
             

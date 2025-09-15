@@ -19,26 +19,14 @@ struct adc_ctrl_t create_adc_ctrl(bool verbose) {
   return adc_ctrl;
 }
 
-// Read ADC value word from a specific board
-uint32_t adc_read(struct adc_ctrl_t *adc_ctrl, uint8_t board) {
+// Read ADC sample pair word from a specific board
+uint32_t adc_read_word(struct adc_ctrl_t *adc_ctrl, uint8_t board) {
   if (board > 7) {
     fprintf(stderr, "Invalid ADC board: %d. Must be 0-7.\n", board);
     return 0; // Return 0 for invalid board
   }
 
   return *(adc_ctrl->buffer[board]);
-}
-
-// Read a single ADC sample (one channel) from a specific board
-int16_t adc_read_ch(struct adc_ctrl_t *adc_ctrl, uint8_t board) {
-  if (board > 7) {
-    fprintf(stderr, "Invalid ADC board: %d. Must be 0-7.\n", board);
-    return 0; // Return 0 for invalid board
-  }
-
-  uint32_t data = *(adc_ctrl->buffer[board]);
-  uint16_t lower_16 = data & 0xFFFF;
-  return ADC_OFFSET_TO_SIGNED(lower_16);
 }
 
 // Interpret and print ADC value as debug information
@@ -236,4 +224,22 @@ void adc_cmd_loop_next(struct adc_ctrl_t *adc_ctrl, uint8_t board, uint32_t loop
     printf("ADC[%d] LOOP command word: 0x%08X (loop count: %u)\n", board, cmd_word, loop_count);
   }
   *(adc_ctrl->buffer[board]) = cmd_word;
+}
+
+// Convert and print a single ADC sample from a 32-bit word (low 16 bits)
+void adc_print_single(uint32_t data_word) {
+  uint16_t lower_16 = data_word & 0xFFFF;
+  int16_t signed_value = ADC_OFFSET_TO_SIGNED(lower_16);
+  printf("%d", signed_value);
+}
+
+// Convert and print a pair of ADC samples from a 32-bit word
+void adc_print_pair(uint32_t data_word) {
+  uint16_t lower_16 = data_word & 0xFFFF;
+  uint16_t upper_16 = (data_word >> 16) & 0xFFFF;
+  
+  int16_t first_value = ADC_OFFSET_TO_SIGNED(lower_16);
+  int16_t second_value = ADC_OFFSET_TO_SIGNED(upper_16);
+  
+  printf("%d, %d", first_value, second_value);
 }

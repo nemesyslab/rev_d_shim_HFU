@@ -408,7 +408,7 @@ async def test_unexpected_cmd(dut):
     data_buf_task.kill()
     data_buf_scoreboard_task.kill()
 
-@cocotb.test(skip=True)
+@cocotb.test()
 async def test_back_to_back_force_trig_cmd(dut):
     tb = await setup_testbench(dut)
     tb.dut._log.info("STARTING TEST: test_back_to_back_force_trig_cmd")
@@ -466,7 +466,7 @@ async def test_random_cmd_sequence(dut):
     random.seed(seed)
     dut._log.info(f"Random seed: {seed}")
 
-    for i in range(10):
+    for i in range(100):
         tb = await setup_testbench(dut)
         tb.dut._log.info(f"STARTING TEST: test_random_cmd_sequence ITERATION: {i+1}")
 
@@ -489,7 +489,7 @@ async def test_random_cmd_sequence(dut):
         data_buf_task = cocotb.start_soon(tb.data_buf_model())
         trig_timer_task = cocotb.start_soon(tb.trig_timer_tracker())
 
-        # Randomly drive external trigger and dac/adc waiting signals during the test
+        # Randomly drive dac/adc waiting signals during the test
         waiting_for_trig_task = cocotb.start_soon(tb.random_waiting_for_trig_driver())
 
         # Randomly drive ext_trig signal during the test

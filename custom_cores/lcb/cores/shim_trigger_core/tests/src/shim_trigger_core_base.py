@@ -633,29 +633,31 @@ class shim_trigger_core_base:
             self.dut.data_buf_almost_full.value = 1 if self.data_buf.is_almost_full() else 0
 
     async def trig_timer_tracker(self):
-        """ Generate the expected trigger timing data parallel to the DUT and write into self.expected_trig_timer_list."""
+        """Generate expected trigger timing data based on do_trig signal and store in a list for later comparison."""
         expected_trig_timer = 0
-        
+
         while True:
             await RisingEdge(self.dut.clk)
             prev_do_trig = int(self.dut.do_trig.value)
 
             await ReadOnly()
-            write_cond = int(self.dut.do_trig.value) == 1 and int(self.dut.data_buf_full.value) == 0 and int(self.dut.data_buf_almost_full.value) == 0
-            effectively_in_buffer = int(self.dut.trig_data_second_word.value) == 1
+            sample_cond = int(self.dut.do_trig.value) == 1 and int(self.dut.data_buf_full.value) == 0 and int(self.dut.data_buf_almost_full.value) == 0
 
             if prev_do_trig == 1 and expected_trig_timer == 0:
                 expected_trig_timer = 1
             elif expected_trig_timer > 0:
                 expected_trig_timer += 1
 
-            if write_cond and prev_do_trig == 0:
+            if sample_cond:
                 first_data_word = expected_trig_timer & 0xFFFFFFFF
                 second_data_word = (expected_trig_timer >> 32) & 0xFFFFFFFF
-
-            if effectively_in_buffer:
+                await RisingEdge(self.dut.clk)
+                expected_trig_timer += 1
+                await RisingEdge(self.dut.clk)
+                expected_trig_timer += 1
                 self.dut._log.info(f"Expected Trigger Timing Data Generated: First Word:0x{first_data_word:08X}, Second Word:0x{second_data_word:08X}")
                 self.expected_trig_timer_list.append((first_data_word, second_data_word))
+
 
     async def data_buf_scoreboard(self):
         """

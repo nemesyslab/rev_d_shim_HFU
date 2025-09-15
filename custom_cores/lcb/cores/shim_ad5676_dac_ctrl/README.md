@@ -1,4 +1,4 @@
-**Updated 2025-09-02**
+**Updated 2025-09-15**
 # AD5676 DAC Control Core
 
 The `shim_ad5676_dac_ctrl` module implements command-driven control for the Analog Devices AD5676 DAC in the Rev D shim firmware. It manages SPI transactions, command sequencing, per-channel calibration, error detection, and synchronization for all 8 DAC channels.
@@ -46,11 +46,12 @@ The state machine in `shim_ad5676_dac_ctrl` uses the following codes:
 | `2`        | `S_TEST_WR`  | Boot test: writes test value to DAC register.                               |
 | `3`        | `S_REQ_RD`   | Boot test: requests readback of test value.                                 |
 | `4`        | `S_TEST_RD`  | Boot test: reads back register value and checks for match.                  |
-| `5`        | `S_IDLE`     | Idle; waits for new command from buffer.                                    |
-| `6`        | `S_DELAY`    | Delay timer; waits for specified cycles before next command.                |
-| `7`        | `S_TRIG_WAIT`| Waits for external trigger signal.                                          |
-| `8`        | `S_DAC_WR`   | Performs DAC write sequence for all channels.                               |
-| `9`        | `S_DAC_WR_CH`| Immediately and simply write to a single DAC channel.                       |
+| `5`        | `S_SET_MID`  | Boot test: sets all DAC channels to midrange value after successful test.   |
+| `6`        | `S_IDLE`     | Idle; waits for new command from buffer.                                    |
+| `7`        | `S_DELAY`    | Delay timer; waits for specified cycles before next command.                |
+| `8`        | `S_TRIG_WAIT`| Waits for external trigger signal.                                          |
+| `9`        | `S_DAC_WR`   | Performs DAC write sequence for all channels.                               |
+| `10`       | `S_DAC_WR_CH`| Immediately and simply write to a single DAC channel.                       |
 | `15`       | `S_ERROR`    | Error state; indicates boot/readback failure or invalid command/condition.  |
 
 State transitions are managed based on command type, trigger, delay, and error conditions.
@@ -108,7 +109,9 @@ The boot test sequence is as follows:
     0xXX800A
     ```
 
-5. `S_TEST_RD -> S_IDLE`: If readback matches expected value, setup is complete (set `setup_done`); otherwise, transitions to `S_ERROR` and sets `boot_fail`.
+5. `S_TEST_RD -> S_SET_MID`: If readback matches expected value, write midrange value to all DAC channels; otherwise, transitions to `S_ERROR` and sets `boot_fail`.
+
+6. `S_SET_MID -> S_IDLE`: After all channels are set to midrange, setup is complete (set `setup_done`).
 
 ## Operation
 

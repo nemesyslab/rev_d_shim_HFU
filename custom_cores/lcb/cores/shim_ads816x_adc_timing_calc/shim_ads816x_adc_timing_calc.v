@@ -9,7 +9,8 @@ module shim_ads816x_adc_timing_calc #(
   input  wire [31:0] spi_clk_freq_hz, // SPI clock frequency in Hz
   input  wire        calc,            // Start calculation signal
   
-  output reg  [7:0]  n_cs_high_time,  // Calculated n_cs high time in cycles (max 255)
+  output reg  [7:0]  n_cs_high_time,  // Calculated n_cs high time in cycles (minus 1)
+                                      //   Range: 2 to 255 (corresponds to 3 to 256 cycles, 60ns to 5120ns at 50MHz SPI clock)
   output reg         done,            // Calculation complete
   output reg         lock_viol        // Error if frequency changes during calc
 );
@@ -79,12 +80,14 @@ module shim_ads816x_adc_timing_calc #(
   reg [ 3:0] mult_count;      // 4 bits sufficient for max 16 bits
   reg [31:0] multiplicand;    // The constant (T_CONV_NiS or T_CYCLE_NiS)
   reg [31:0] multiplier;      // The frequency value
-  reg [63:0] mult_result;
   reg [63:0] mult_accumulator;
+  wire [63:0] mult_result_rounded_up;
 
   ///////////////////////////////////////////////////////////////////////////////
   // Logic
   ///////////////////////////////////////////////////////////////////////////////
+
+  assign mult_result_rounded_up = mult_accumulator + 64'h3FFFFFFF; // Add 2^30 - 1 for rounding
 
   always @(posedge clk) begin
     if (!resetn) begin
@@ -99,7 +102,6 @@ module shim_ads816x_adc_timing_calc #(
       mult_count <= 4'd0;
       multiplicand <= 32'd0;
       multiplier <= 32'd0;
-      mult_result <= 64'd0;
       mult_accumulator <= 64'd0;
     end else begin
       case (state)
@@ -135,10 +137,9 @@ module shim_ads816x_adc_timing_calc #(
               end
               mult_count <= mult_count + 1;
             end else begin
-              // Multiplication complete, shift right by 30 bits (equivalent to divide by 2^30)
-              mult_result <= mult_accumulator;
-              min_cycles_for_t_conv <= mult_accumulator[61:30] < 3 ? 3 : mult_accumulator[61:30];
-              
+              // Multiplication complete, add 2^30 - 1 for rounding, then shift right by 30 bits (equivalent to divide by 2^30)
+              // Ensure n_cs high time is at least 3 cycles to give the ADC core enough time to send data
+              min_cycles_for_t_conv <= (mult_result_rounded_up[61:30]) < 3 ? 3 : (mult_result_rounded_up[61:30]);
               // Setup multiplication for T_CYCLE_NiS * spi_clk_freq_hz_latched
               multiplicand <= T_CYCLE_NiS;
               multiplier <= spi_clk_freq_hz_latched;
@@ -167,10 +168,8 @@ module shim_ads816x_adc_timing_calc #(
               end
               mult_count <= mult_count + 1;
             end else begin
-              // Multiplication complete, shift right by 30 bits (equivalent to divide by 2^30)
-              mult_result <= mult_accumulator;
-              min_cycles_for_t_cycle <= mult_accumulator[61:30] > OTF_CMD_BITS ? (mult_accumulator[61:30] - OTF_CMD_BITS) : 0;
-              
+              // Multiplication complete, add 2^30 - 1 for rounding, then shift right by 30 bits (equivalent to divide by 2^30)
+              min_cycles_for_t_cycle <= (mult_result_rounded_up[61:30]) > OTF_CMD_BITS ? ((mult_result_rounded_up[61:30]) - OTF_CMD_BITS) : 0;
               state <= S_CALC_RESULT;
             end
           end
@@ -187,7 +186,7 @@ module shim_ads816x_adc_timing_calc #(
             state <= S_IDLE;
           end else begin
             // Calculate final result based on the following logic:
-            // n_cs_high_time_calc = max(min_cycles_for_t_conv, min_cycles_for_t_cycle)
+            // final_result = max(min_cycles_for_t_conv, min_cycles_for_t_cycle) - 1
             if (min_cycles_for_t_conv < min_cycles_for_t_cycle) begin
               final_result <= min_cycles_for_t_cycle;
             end else begin
@@ -207,11 +206,11 @@ module shim_ads816x_adc_timing_calc #(
             // calc went low, reset
             state <= S_IDLE;
           end else begin
-            // Cap n_cs_high_time at 255 (at the maximum 50MHz SPI clock, this plus the command bits is 5420ns, which is over the maximum 4000ns required)
+            // Cap n_cs_high_time at 255 (at the maximum 50MHz SPI clock, 256 + 16 bits is 5440ns, which is over the maximum 4000ns required)
             if (final_result > 255) begin
             n_cs_high_time <= 8'd255;
             end else begin
-            n_cs_high_time <= final_result[7:0]; // Truncate to 8 bits
+            n_cs_high_time <= final_result[7:0] - 1; // Truncate to 8 bits
             end
             done <= 1'b1;
             // Stay in this state until calc goes low

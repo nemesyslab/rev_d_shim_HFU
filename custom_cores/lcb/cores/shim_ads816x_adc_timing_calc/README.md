@@ -1,11 +1,11 @@
-***Updated 2025-09-17***
+***Updated 2025-09-21***
 # ADS816x ADC Timing Calculator Core
 
 The `shim_ads816x_adc_timing_calc` module provides hardware-optimized timing calculations for ADS816x series ADCs, determining the required n_cs high time based on SPI clock frequency and ADC model specifications.
 
 ## Overview
 
-This module calculates the minimum number of SPI clock cycles that the chip select (n_cs) signal must remain high between ADC conversions to meet timing requirements. The calculation considers both conversion time and cycle time constraints for different ADS816x models. To divide, the module scales the nanosecond timing requirements to a power-of-two unit (NiS) to allow division via bit-shifting.
+This module calculates the minimum number of SPI clock cycles that the chip select (n_cs) signal must remain high between ADC conversions to meet timing requirements. The calculation considers both conversion time and cycle time constraints for different ADS816x models. To divide, the module scales the nanosecond timing requirements to a power-of-two unit (NiS) to allow division via bit-shifting. The output represents cycles minus 1 (i.e., output of 3 means 4 actual cycles).
 
 ## Parameters
 
@@ -32,7 +32,7 @@ This module calculates the minimum number of SPI clock cycles that the chip sele
 - `calc`: Start calculation signal (active high)
 
 ### Outputs
-- `n_cs_high_time` (8-bit): Calculated n_cs high time in SPI clock cycles (0-255)
+- `n_cs_high_time` (8-bit): Calculated n_cs high time in SPI clock cycles minus 1 (2-255, representing 3-256 actual cycles)
 - `done`: Calculation complete signal (active high)
 - `lock_viol`: Lock violation signal, asserted if SPI frequency changes during calculation
 
@@ -49,32 +49,34 @@ The module implements a 5-state finite state machine:
 
 ### Calculation Method
 
-The module uses optimized shift-add multiplication to avoid DSP resource usage:
+The module uses optimized shift-add multiplication to avoid DSP resource usage and includes automatic rounding:
 
 1. **Conversion Time Calculation**:
    ```
-   min_cycles_conv = max(3, (T_CONV_NiS × spi_clk_freq_hz) >> 30)
+   min_cycles_conv = max(3, (T_CONV_NiS × spi_clk_freq_hz + 2^30 - 1) >> 30)
    ```
 
 2. **Cycle Time Calculation**:
    ```
-   min_cycles_cycle = max(0, ((T_CYCLE_NiS × spi_clk_freq_hz) >> 30) - 16)
+   min_cycles_cycle = max(0, ((T_CYCLE_NiS × spi_clk_freq_hz + 2^30 - 1) >> 30) - 16)
    ```
    *Note: 16 represents the on-the-fly command bits*
 
 3. **Final Result**:
    ```
-   n_cs_high_time = min(255, max(min_cycles_conv, min_cycles_cycle))
+   n_cs_high_time = min(255, max(min_cycles_conv, min_cycles_cycle) - 1)
    ```
+   *Note: Output is cycles minus 1, so actual cycles = n_cs_high_time + 1*
 
 ### Performance Optimizations
 
 - **NiS Scaling**: Uses 2^30 scaling factor to replace division with bit shifting
+- **Automatic Rounding**: Adds 2^30 - 1 before bit shifting to ensure proper rounding up
 - **Optimized Multiplication**: Shift-add algorithm iterates only for significant bits:
   - ADS8168: 10-11 iterations instead of 32
   - ADS8167: 11-12 iterations instead of 32  
   - ADS8166: 12-13 iterations instead of 32
-- **Resource Efficient**: 4-bit counter, no DSP blocks required
+- **Resource Efficient**: Uses wire for intermediate rounding calculations, no DSP blocks required
 
 ### Error Handling
 
@@ -86,7 +88,8 @@ The module uses optimized shift-add multiplication to avoid DSP resource usage:
 
 - **Minimum Conversion Time**: Ensures at least 3 cycles for conversion
 - **Cycle Time Accounting**: Subtracts 16-bit command transmission time from cycle requirement
-- **Maximum Frequency**: At 50MHz SPI clock with 255 cycles, total time is 5420ns (exceeds maximum 4000ns ADC requirement)
+- **Output Format**: Returns cycles minus 1 (actual cycles = output + 1, range 3-256 cycles)
+- **Maximum Frequency**: At 50MHz SPI clock with output 255, actual cycles are 256, total time is 5440ns (exceeds maximum 4000ns ADC requirement)
 
 ## Usage Example
 
@@ -111,3 +114,5 @@ shim_ads816x_adc_timing_calc #(
 - Multiplication optimization reduces calculation time by ~50%
 - Module maintains frequency lock during calculation to ensure accuracy
 - Reset values initialize all registers to safe defaults
+- **Output Format**: n_cs_high_time represents cycles minus 1 for hardware efficiency
+- Automatic rounding ensures conservative timing calculations

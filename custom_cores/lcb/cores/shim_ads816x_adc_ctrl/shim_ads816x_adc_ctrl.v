@@ -444,14 +444,21 @@ module shim_ads816x_adc_ctrl (
     // No-op during the word when reading back the On-the-Fly mode register
     end else if (state == S_REQ_RD && adc_spi_cmd_done) begin
       mosi_shift_reg <= 24'd0; 
-    // Load the shift register with the next ADC word command
-    end else if ((do_next_cmd && (next_cmd_state == S_ADC_RD))
-                 || ((state == S_ADC_RD) && adc_spi_cmd_done)) begin
-      if (!last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(sample_order[adc_word_idx[2:0]]), 8'd0};
+    // When starting an 8ch command, start with index 0
+    end else if (do_next_cmd && (next_cmd_state == S_ADC_RD)) begin
+      mosi_shift_reg <= {spi_req_otf_sample_cmd(sample_order[adc_word_idx[2:0]]), 8'd0};
+    // Otherwise, use the next adc_word_idx (increment happens at the same cycle, so use +1 here)
+    end else if ((state == S_ADC_RD) && adc_spi_cmd_done) begin
+      // The first word uses the next channel in the sequence
+      if (!last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(sample_order[adc_word_idx[2:0]]+1), 8'd0};
+      // The last (ninth for this command) word is always channel 0 (dummy read to allow one-cycle MISO delay)
       else if (last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(3'b0), 8'd0};
+    // When starting a single-channel command, use the channel from the command word
     end else if ((do_next_cmd && (next_cmd_state == S_ADC_RD_CH))
                   || ((state == S_ADC_RD_CH) && adc_spi_cmd_done)) begin
+      // The first word uses the channel from the command
       if (!last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(cmd_word[2:0]), 8'd0};
+      // The last (second for this command) word is always channel 0 (dummy read to allow one-cycle MISO delay)
       else if (last_adc_word) mosi_shift_reg <= {spi_req_otf_sample_cmd(3'b0), 8'd0};
     end
   end

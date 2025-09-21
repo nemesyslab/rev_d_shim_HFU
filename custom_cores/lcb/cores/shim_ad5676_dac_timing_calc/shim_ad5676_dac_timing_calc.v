@@ -7,7 +7,8 @@ module shim_ad5676_dac_timing_calc (
   input  wire [31:0] spi_clk_freq_hz, // SPI clock frequency in Hz
   input  wire        calc,            // Start calculation signal
   
-  output reg  [4:0]  n_cs_high_time,  // Calculated n_cs high time in cycles (max 31)
+  output reg  [4:0]  n_cs_high_time,  // Calculated n_cs high time in cycles (minus 1)
+                                      //   Range: 3 to 31 (corresponds to 4 to 32 cycles, 80ns to 640ns at 50MHz SPI clock)
   output reg         done,            // Calculation complete
   output reg         lock_viol        // Error if frequency changes during calc
 );
@@ -56,12 +57,14 @@ module shim_ad5676_dac_timing_calc (
   reg [ 3:0] mult_count;
   reg [31:0] multiplicand;  // The constant (T_UPDATE_NiS or T_MIN_N_CS_HIGH_NiS)
   reg [31:0] multiplier;    // The frequency value
-  reg [63:0] mult_result;
   reg [63:0] mult_accumulator;
+  wire [63:0] mult_result_rounded_up;
 
   ///////////////////////////////////////////////////////////////////////////////
   // Logic
   ///////////////////////////////////////////////////////////////////////////////
+
+  assign mult_result_rounded_up = mult_accumulator + 64'h3FFFFFFF; // Add 2^30 - 1 for rounding
 
   always @(posedge clk) begin
     if (!resetn) begin
@@ -76,7 +79,6 @@ module shim_ad5676_dac_timing_calc (
       mult_count <= 4'd0;
       multiplicand <= 32'd0;
       multiplier <= 32'd0;
-      mult_result <= 64'd0;
       mult_accumulator <= 64'd0;
     end else begin
       case (state)
@@ -112,9 +114,8 @@ module shim_ad5676_dac_timing_calc (
               end
               mult_count <= mult_count + 1;
             end else begin
-              // Multiplication complete, shift right by 30 bits (equivalent to divide by 2^30)
-              mult_result <= mult_accumulator;
-              min_cycles_for_t_update <= mult_accumulator[61:30] > SPI_CMD_BITS ? mult_accumulator[61:30] : 0;
+              // Multiplication complete, add 2^30 - 1 for rounding, then shift right by 30 bits (equivalent to divide by 2^30)
+              min_cycles_for_t_update <= (mult_result_rounded_up[61:30]) > SPI_CMD_BITS ? (mult_result_rounded_up[61:30]) : 0;
               
               // Setup multiplication for T_MIN_N_CS_HIGH_NiS * spi_clk_freq_hz_latched
               multiplicand <= T_MIN_N_CS_HIGH_NiS;
@@ -144,15 +145,9 @@ module shim_ad5676_dac_timing_calc (
               end
               mult_count <= mult_count + 1;
             end else begin
-              // Multiplication complete, shift right by 30 bits (equivalent to divide by 2^30)
-              mult_result <= mult_accumulator;
+              // Multiplication complete, add 2^30 - 1 for rounding, then shift right by 30 bits (equivalent to divide by 2^30)
               // Ensure n_cs high time is at least 4 cycles to do DAC value loading and calibration
-              if (mult_accumulator[61:30] < 4) begin
-                min_cycles_for_t_min_n_cs_high <= 32'd4;
-              end else begin
-                min_cycles_for_t_min_n_cs_high <= mult_accumulator[61:30];
-              end
-              
+              min_cycles_for_t_min_n_cs_high <= (mult_result_rounded_up[61:30] < 4) ? 32'd4 : mult_result_rounded_up[61:30];
               state <= S_CALC_RESULT;
             end
           end
@@ -189,11 +184,11 @@ module shim_ad5676_dac_timing_calc (
             // calc went low, reset
             state <= S_IDLE;
           end else begin
-            // Cap n_cs_high_time at 31 (at the maximum 50MHz SPI clock, this plus the command bits is 1120ns, which is >830ns required)
+            // Cap n_cs_high_time at 31 (32 + 24 bits at the maximum 50MHz SPI clock is 1120ns, which is >830ns required)
             if (final_result > 31) begin
               n_cs_high_time <= 5'd31;
             end else begin
-              n_cs_high_time <= final_result[4:0];
+              n_cs_high_time <= final_result[4:0] - 1; // Subtract 1 to get n_cs_high_time (3 = 4 cycles, 31 = 32 cycles)
             end
             done <= 1'b1;
             // Stay in this state until calc goes low

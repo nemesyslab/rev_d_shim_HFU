@@ -132,6 +132,7 @@ module shim_trigger_core #(
   always @(posedge clk) begin
     if (!resetn || cancel || state == S_ERROR) trig_out <= 0;
     else trig_out <= do_trig; // Trigger pulse
+  end
   // Trigger logging
   always @(posedge clk) begin
     if (!resetn) log_trig <= 0;
@@ -141,7 +142,6 @@ module shim_trigger_core #(
                   || (next_cmd && cmd_type == CMD_SYNC_CH && all_waiting && cmd_log_trig) // Sync channels edge case with logging
                   || (state == S_SYNC_CH && all_waiting && log_trig) // Sync channels with logging
                   || (state == S_EXPECT_TRIG && lockout_counter == 0 && ext_trig && log_trig); // External trigger with logging
-  end
 
   //// Error handling
   // Bad command

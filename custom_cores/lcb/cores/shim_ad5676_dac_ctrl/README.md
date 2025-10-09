@@ -125,6 +125,7 @@ The core operates based on 32-bit word commands read from the command buffer. Th
 - **DAC_WR (`3'd2`):** Write DAC values (4 words, 2 channels each).
 - **DAC_WR_CH (`3'd3`):** Write single DAC channel.
 - **GET_CAL (`3'd4`):** Read calibration value for a channel.
+- **ZERO (`3'd5`):** Set all DAC channels to calibrated midrange (zero) values.
 - **CANCEL (`3'd7`):** Cancel current wait or delay.
 
 ### Command Word Structure
@@ -187,6 +188,15 @@ Reads the current calibration value for the specified channel. Outputs the calib
 
 **State transitions:**
 - `S_IDLE -> S_IDLE/next_cmd_state`
+- Transition to the next command state if one is present. Otherwise return to `S_IDLE`.
+
+#### ZERO (`3'd5`)
+Sets all DAC channels to their calibrated midrange (zero) values. This command uses the per-channel calibration values to compute the appropriate offset values for each channel and writes them all sequentially. Has no delays or trigger waits after completion, and immediately pulses LDAC after all channels are updated.
+
+This command is functionally equivalent to the `S_SET_MID` state used during boot initialization.
+
+**State transitions:**
+- `S_IDLE -> S_SET_MID -> S_IDLE/next_cmd_state`
 - Transition to the next command state if one is present. Otherwise return to `S_IDLE`.
 
 #### CANCEL (`3'd7`)

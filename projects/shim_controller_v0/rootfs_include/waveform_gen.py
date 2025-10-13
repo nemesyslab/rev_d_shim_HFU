@@ -17,7 +17,7 @@ def save_array_to_file(array, filename):
 def eight_channel_offset(offset_amps, runtime_ms):
   samples = runtime_ms * 50
   array = np.zeros((samples, 32)) + 1.0
-  array[:, :8] = array[:, :8] + (offset_amps / 4.0)
+  array[:, :8] = array[:, :8] + (offset_amps / 5.1)
   array[-2:, :] = 1.0
   array = array * 2**15
   array = np.round(array).astype(np.int32)
@@ -27,7 +27,7 @@ def one_channel_sine(channel, freq_hz, amplitude_amps, runtime_ms):
   samples = runtime_ms * 50
   array = np.zeros((samples, 32)) + 1.0
   time_ms = np.linspace(0, runtime_ms, samples)
-  array[:, channel] = array[:, channel] + (amplitude_amps / 4.0) * np.sin(2 * np.pi * freq_hz * time_ms / 1000)
+  array[:, channel] = array[:, channel] + (amplitude_amps / 5.1) * np.sin(2 * np.pi * freq_hz * time_ms / 1000)
   array[-2:, :] = 1.0
   array = array * 2**15
   array = np.round(array).astype(np.int32)
@@ -37,7 +37,7 @@ def all_channel_sine(freq_hz, amplitude_amps, runtime_ms):
   samples = runtime_ms * 50
   array = np.zeros((samples, 32)) + 1.0
   time_ms = np.linspace(0, runtime_ms, samples).reshape(-1, 1)
-  array[:, :8] = array[:, :8] + (amplitude_amps / 4.0) * np.sin(2 * np.pi * freq_hz * time_ms / 1000)
+  array[:, :8] = array[:, :8] + (amplitude_amps / 5.1) * np.sin(2 * np.pi * freq_hz * time_ms / 1000)
   array[-2:, :] = 1.0
   array = array * 2**15
   array = np.round(array).astype(np.int32)

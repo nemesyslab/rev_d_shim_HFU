@@ -69,7 +69,6 @@ module shim_ads816x_adc_ctrl (
   localparam S_TRIG_WAIT = 4'd7;
   localparam S_ADC_RD    = 4'd8;
   localparam S_ADC_RD_CH = 4'd9;
-  localparam S_LOOP_NEXT = 4'd10;
   localparam S_ERROR     = 4'd15;
 
   // Command types
@@ -77,12 +76,12 @@ module shim_ads816x_adc_ctrl (
   localparam CMD_SET_ORD   = 3'd1;
   localparam CMD_ADC_RD    = 3'd2;
   localparam CMD_ADC_RD_CH = 3'd3;
-  localparam CMD_LOOP      = 3'd4;
   localparam CMD_CANCEL    = 3'd7;
 
   // Command bit positions
   localparam TRIG_BIT = 28;
   localparam CONT_BIT = 27;
+  localparam LOOP_BIT = 26;
 
   // Debug codes
   localparam DBG_MISO_DATA       = 4'd1;
@@ -101,21 +100,24 @@ module shim_ads816x_adc_ctrl (
   // Command flow control
   wire [ 2:0] command;
   wire [31:0] cmd_word;
+  reg  [31:0] prev_cmd_buf_word;
   wire        next_cmd_ready;
   wire        cmd_done;
   wire        do_next_cmd;
   wire [ 3:0] next_cmd_state;
   wire        cancel_wait;
   wire        error;
-  // Looping
-  wire        looping;
-  reg  [25:0] loop_counter;
-  reg  [31:0] loop_cmd_word;
   // Command word toggled bits
   reg         wait_for_trig;
+  reg         expect_next;
+  reg         start_loop;
+  // Wait done signals
   wire        trig_wait_done;
   wire        delay_wait_done;
-  reg         expect_next;
+  // Looping
+  wire        looping;
+  reg  [31:0] loop_counter;
+  reg  [31:0] loop_cmd_word;
   // Delay timer and trigger counter
   reg  [24:0] delay_timer, trigger_counter;
   // ADC sample order
@@ -173,7 +175,10 @@ module shim_ads816x_adc_ctrl (
   // Logic
   ///////////////////////////////////////////////////////////////////////////////
 
-  //// ---- Command word
+  //// ---- Command word processing
+  always @(posedge clk) begin
+    if (cmd_buf_rd_en) prev_cmd_buf_word <= cmd_buf_word;
+  end
   assign cmd_word = cmd_buf_empty ? 32'd0
                     : (looping) ? loop_cmd_word
                     : cmd_buf_word;
@@ -182,7 +187,7 @@ module shim_ads816x_adc_ctrl (
   // Allow a cancel command to cancel a loop
   assign cancel_loop = (loop_counter > 0 && !cmd_buf_empty && cmd_buf_word[31:29] == CMD_CANCEL);
   // Command word read enable
-  assign cmd_buf_rd_en = (state != S_ERROR) && next_cmd_ready && !looping && (cmd_done || cancel_wait);
+  assign cmd_buf_rd_en = (state != S_ERROR) && next_cmd_ready && !looping && (cmd_done || cancel_wait || start_loop);
   // Command bits processing
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) begin
@@ -193,10 +198,12 @@ module shim_ads816x_adc_ctrl (
       if ((command == CMD_NO_OP) || (command == CMD_ADC_RD)) begin
         wait_for_trig <= cmd_word[TRIG_BIT];
         expect_next <= cmd_word[CONT_BIT];
+        start_loop <= (cancel_loop || start_loop) ? 1'b0 : cmd_word[LOOP_BIT];
       // For the single-channel ADC_RD_CH command, always set wait_for_trig to 1 and expect_next to 0
       end else if (command == CMD_ADC_RD_CH) begin
         wait_for_trig <= 1'b1;
         expect_next <= 1'b0;
+        start_loop <= (cancel_loop || start_loop) ? 1'b0 : cmd_word[LOOP_BIT];
       // Otherwise set flags to 0
       end else begin
         wait_for_trig <= 1'b0;
@@ -220,16 +227,14 @@ module shim_ads816x_adc_ctrl (
                     || (state == S_DELAY && delay_wait_done)
                     || (state == S_TRIG_WAIT && trig_wait_done)
                     || (state == S_ADC_RD && adc_rd_done && (wait_for_trig ? trig_wait_done : delay_wait_done))
-                    || (state == S_ADC_RD_CH && adc_rd_done)
-                    || (state == S_LOOP_NEXT && next_cmd_ready);
-  assign do_next_cmd = cmd_done && next_cmd_ready;
+                    || (state == S_ADC_RD_CH && adc_rd_done);
+  assign do_next_cmd = cmd_done && next_cmd_ready && !start_loop;
   // Next state from upcoming command
   assign next_cmd_state = !next_cmd_ready ? (expect_next ? S_ERROR : S_IDLE) // If buffer is empty, error if expecting next command, otherwise IDLE
                           : (command == CMD_NO_OP) ? (cmd_word[TRIG_BIT] ? S_TRIG_WAIT : S_DELAY) // If command is NO_OP, either wait for trigger or delay depending on TRIG_BIT
-                          : (command == CMD_SET_ORD) ? ((loop_counter == 0) ? S_IDLE : S_ERROR) // If command is SET_ORD, go to IDLE if not looping, otherwise ERROR
+                          : (command == CMD_SET_ORD) ? S_IDLE // If command is SET_ORD, go to IDLE
                           : (command == CMD_ADC_RD) ? S_ADC_RD // If command is ADC read, go to ADC read state
                           : (command == CMD_ADC_RD_CH) ? S_ADC_RD_CH // If command is single-channel ADC read, go to ADC read state
-                          : (command == CMD_LOOP) ? ((loop_counter == 0) ? S_LOOP_NEXT : S_ERROR) // If command is LOOP, go to IDLE if not looping, otherwise ERROR
                           : (command == CMD_CANCEL) ? S_IDLE // If command is CANCEL, go to IDLE
                           : S_ERROR; // If command is unrecognized, go to ERROR state
   // Signal indicating the core is waiting for a trigger
@@ -260,16 +265,15 @@ module shim_ads816x_adc_ctrl (
 
 
   //// ---- Looping
-  assign looping = (loop_counter > 0 && state != S_LOOP_NEXT);
+  assign looping = loop_counter > 0;
   always @(posedge clk) begin
     if (!resetn || state == S_ERROR) loop_cmd_word <= 32'd0;
-    else if (state == S_LOOP_NEXT && loop_counter > 0 && next_cmd_ready) loop_cmd_word <= cmd_buf_word;
-    else if (!looping) loop_cmd_word <= 32'd0;
+    else if (start_loop) loop_cmd_word <= prev_cmd_buf_word & ~(1 << LOOP_BIT); // Clear the LOOP_BIT when storing the command for looping
   end
   always @(posedge clk) begin
-    if (!resetn || state == S_ERROR) loop_counter <= 26'd0;
-    else if (do_next_cmd && command == CMD_LOOP) loop_counter <= cmd_word[25:0];
-    else if (loop_counter > 0 && cmd_done) loop_counter <= loop_counter - 1;
+    if (!resetn || state == S_ERROR) loop_counter <= 32'd0;
+    else if (loop_counter > 0 && do_next_cmd) loop_counter <= loop_counter - 1;
+    else if (start_loop && !cmd_buf_empty) loop_counter <= cmd_word[31:0];
   end 
 
 
@@ -308,6 +312,7 @@ module shim_ads816x_adc_ctrl (
                  || (state == S_ADC_RD && !adc_rd_done && !wait_for_trig && delay_wait_done) // Delay too short
                  || (do_next_cmd && next_cmd_state == S_ERROR) // Bad command
                  || (cmd_done && expect_next && !next_cmd_ready) // Command buffer underflow
+                 || (start_loop && cmd_buf_empty) // Command buffer underflow on loop start
                  || (try_data_write && data_buf_full); // Data buffer overflow
   // Boot check fail
   assign boot_readback_match = (miso_data_mosi_clk[15:8] == SET_OTF_CFG_DATA); // Readback matches the test value
@@ -333,7 +338,8 @@ module shim_ads816x_adc_ctrl (
   // Command buffer underflow
   always @(posedge clk) begin
     if (!resetn) cmd_buf_underflow <= 1'b0;
-    else if (cmd_done && expect_next && !next_cmd_ready) cmd_buf_underflow <= 1'b1;
+    else if ((cmd_done && expect_next && !next_cmd_ready) || (start_loop && cmd_buf_empty))
+      cmd_buf_underflow <= 1'b1;
   end
   // Data buffer overflow
   always @(posedge clk) begin

@@ -108,6 +108,7 @@ module shim_ad5676_dac_ctrl #(
   localparam DBG_STATE_TRANSITION = 4'd2;
   localparam DBG_N_CS_TIMER       = 4'd3;
   localparam DBG_SPI_BIT          = 4'd4;
+  localparam DBG_DAC_WRITE        = 4'd5;
   localparam CAL_DATA             = 4'd8;
 
 
@@ -189,6 +190,7 @@ module shim_ad5676_dac_ctrl #(
   wire        debug_state_transition;
   wire        debug_n_cs_timer;
   wire        debug_spi_bit;
+  wire        debug_dac_write;
   wire        try_data_write;
 
 
@@ -659,13 +661,16 @@ module shim_ad5676_dac_ctrl #(
   // DEBUG: n_cs_timer start value
   assign debug_n_cs_timer = (!running_n_cs_timer && n_cs_timer > 0 && debug);
   // DEBUG: SPI bit counter when it changes from 0 to nonzero
-  assign debug_spi_bit = (!running_spi_bit && spi_bit > 0 && debug); 
+  assign debug_spi_bit = (!running_spi_bit && spi_bit > 0 && debug);
+  // DEBUG: DAC write command
+  assign debug_dac_write = (cs_wait_done && debug);
   // Attempt to write data to the data buffer if any of the following are true
   assign try_data_write = write_cal
                           || debug_miso_data
                           || debug_state_transition
                           || debug_n_cs_timer
-                          || debug_spi_bit;
+                          || debug_spi_bit
+                          || debug_dac_write;
   // DAC data output write enable
   // Write MISO data to the data buffer when attempting a write and buffer isn't full
   always @(posedge clk) begin
@@ -687,6 +692,8 @@ module shim_ad5676_dac_ctrl #(
         data_word <= {DBG_N_CS_TIMER, 23'd0, n_cs_timer}; // Write n_cs timer value with debug code
       end else if (debug_spi_bit) begin
         data_word <= {DBG_SPI_BIT, 23'd0, spi_bit}; // Write SPI bit counter value with debug code
+      end else if (debug_dac_write) begin
+        data_word <= {DBG_DAC_WRITE, 4'd0, mosi_shift_reg[47:24]}; // Write the upcoming DAC write command with debug code
       end
     end else data_word <= 32'd0;
   end
